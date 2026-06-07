@@ -1,0 +1,59 @@
+# Coral Key in Three Hour Epochs — Cursor Rules
+
+## Project Overview
+ReefWatch domain adapter for the TattleTots simulation engine.
+Simulates fishery monitoring, IUU detection, and ocean sensor ecology in 3-hour epochs.
+This repo is a **testbed** for TattleTots — it implements `DomainAdapter` and plugs into the engine.
+
+## Architecture
+- `src/coral_key/adapter.py` — Main `ReefWatchAdapter` implementing TattleTots `DomainAdapter` ABC
+- `src/coral_key/config.py` — Pydantic configuration models (scenario, ocean, fleet, sensors, adversary)
+- `src/coral_key/ocean/` — Ocean environment (grid, oceanography, fish stock dynamics)
+- `src/coral_key/fleet/` — Fleet dynamics (vessel models, behavior strategies)
+- `src/coral_key/sensors/` — Sensor streams (AIS, SAR, catch reports, oceanographic, eDNA, EM)
+- `src/coral_key/adversary/` — Adversary model (IUU oracle, platform interference)
+- `src/coral_key/users.py` — Domain user profiles (Patrol Commander, Scientist, Director)
+- `src/coral_key/metrics.py` — Domain-specific metrics collection
+- `src/coral_key/cli.py` — Standalone CLI entry point
+- `tests/` — pytest suite organized by module
+
+## Key Design Principles
+1. **TattleTots-compatible**: Implements `DomainAdapter` ABC exactly. Streams are TattleTots `Stream` objects.
+2. **3-hour epochs**: Every `step()` call = 3 hours of simulated time.
+3. **Adversarial + ecological**: Fish respond ecologically; IUU vessels respond strategically.
+4. **Multiple sensor modalities**: 6 independent data streams with different update frequencies and failure modes.
+5. **Segmented code**: Each module is self-contained with clear interfaces.
+
+## Code Conventions
+- Python 3.11+ with strict typing (mypy strict mode)
+- Pydantic v2 for all data models and configurations
+- NumPy for numerical operations
+- All modules use `from __future__ import annotations`
+- Ruff for linting and formatting (line length 100)
+- Tests use pytest with `smoke` and `slow` markers
+
+## Development Commands
+```bash
+pip install -e ".[dev]"        # Install with dev dependencies
+ruff check src/ tests/         # Lint
+ruff format src/ tests/        # Format
+mypy src/                      # Type check
+pytest                         # All tests
+pytest -m smoke                # Smoke tests only
+coral-key --epochs 100 --verbose  # Run standalone simulation
+```
+
+## Critical Invariants
+- Fish biomass is floored at 1.0 (no full extinction)
+- Spatial distributions always sum to 1.0
+- AIS observations use NaN for dark vessels (no signal)
+- SAR returns -1.0 vector on non-revisit epochs
+- eDNA returns -1.0 vector on non-sample epochs
+- Catch reports are always non-negative
+
+## When Adding Features
+- New sensor types: add to `sensors/`, register in `adapter._setup_streams()`
+- New vessel types: extend `VesselType` enum and `FleetManager` logic
+- New adversary layers: add to `adversary/`, integrate in `adapter.step()`
+- New metrics: extend `EpochMetrics` and `MetricsCollector`
+- Always add corresponding tests
