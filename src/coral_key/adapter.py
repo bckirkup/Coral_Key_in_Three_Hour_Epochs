@@ -91,7 +91,9 @@ class ReefWatchAdapter(DomainAdapter):
             + self._config.fleet.n_iuu_vessels
         )
         self._ais = AISStream(
-            n_vessels=n_vessels, update_interval=self._config.sensors.ais_update_interval
+            n_vessels=n_vessels,
+            update_interval=self._config.sensors.ais_update_interval,
+            features_per_vessel=self._config.sensors.ais_features_per_vessel,
         )
         self._sar = SARStream(
             grid=self._grid,
@@ -110,10 +112,11 @@ class ReefWatchAdapter(DomainAdapter):
             sample_interval=self._config.sensors.edna_sample_interval,
             rng=self._rng,
         )
+        em_cap = self._config.sensors.em_monitored_vessels
         self._em = EMStream(
             n_species=self._config.fish.n_species,
             review_rate=self._config.sensors.em_review_rate,
-            n_monitored_vessels=min(10, n_vessels),
+            n_monitored_vessels=em_cap if em_cap is not None else n_vessels,
             rng=self._rng,
         )
 

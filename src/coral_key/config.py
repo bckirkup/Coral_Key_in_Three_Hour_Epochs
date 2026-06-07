@@ -52,12 +52,20 @@ class SensorConfig(BaseModel):
     """Sensor/platform capabilities."""
 
     ais_update_interval: int = Field(default=1, ge=1, description="AIS epochs between updates")
+    ais_features_per_vessel: int = Field(
+        default=5, ge=1, description="Feature dimensions per vessel in AIS stream"
+    )
     sar_revisit_interval: int = Field(
         default=8, ge=1, description="SAR satellite revisit in epochs (3h each)"
     )
     edna_sample_interval: int = Field(default=56, ge=1, description="eDNA sampling interval")
     em_review_rate: float = Field(
         default=0.3, ge=0.0, le=1.0, description="Fraction of EM footage reviewed"
+    )
+    em_monitored_vessels: int | None = Field(
+        default=None,
+        ge=1,
+        description=("Max vessels with EM coverage. None = all vessels monitored (no cap)."),
     )
     n_gliders: int = Field(default=2, ge=0)
     n_surface_vehicles: int = Field(default=1, ge=0)
