@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coral-key"
+version = "0.1.0"
+description = "ReefWatch fishery monitoring domain adapter for TattleTots — IUU detection, stock assessment, and ocean sensor ecology in three-hour epochs"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Benjamin Kirkup", email = "bckirkup@gmail.com" }]
+keywords = [
+    "simulation",
+    "fishery",
+    "IUU",
+    "agent-based",
+    "information-ecology",
+    "marine",
+    "biosurveillance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pydantic>=2.0",
+    "tattletots>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "pre-commit>=3.0",
+]
+
+[project.scripts]
+coral-key = "coral_key.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coral_key"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["coral_key"]
+known-third-party = ["tattletots"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+packages = ["coral_key"]
+mypy_path = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers -ra"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "smoke: integration smoke test validating domain adapter behavior",
+]
+
+[tool.coverage.run]
+source = ["coral_key"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
