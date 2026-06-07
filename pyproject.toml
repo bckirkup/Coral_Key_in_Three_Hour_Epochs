@@ -45,6 +45,9 @@ dev = [
 [project.scripts]
 coral-key = "coral_key.cli:main"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/coral_key"]
 
