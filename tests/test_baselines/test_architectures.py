@@ -12,69 +12,94 @@ from coral_key.baselines.architectures import (
 
 
 class TestBaselineA0:
-    def test_detects_dark_vessels(self) -> None:
-        a0 = BaselineA0(dark_vessel_threshold=1)
-        # IUU active + dark vessel = detection
-        alert = a0.process_epoch(dark_vessels=2, iuu_active=True)
-        assert alert is True
-        result = a0.get_result()
-        assert result.iuu_detections == 1
-        assert result.detection_rate == 1.0
+    def test_requires_multiple_dark_vessels(self) -> None:
+        """A0 needs >= 2 dark vessels (conservative threshold)."""
+        a0 = BaselineA0(dark_vessel_threshold=2)
+        # Single dark vessel — not enough for A0
+        assert a0.process_epoch(dark_vessels=1, iuu_active=True) is False
+        # Two dark vessels — alert
+        assert a0.process_epoch(dark_vessels=2, iuu_active=True) is True
 
-    def test_no_alert_when_no_dark_vessels(self) -> None:
-        a0 = BaselineA0(dark_vessel_threshold=1)
-        alert = a0.process_epoch(dark_vessels=0, iuu_active=True)
-        assert alert is False
-
-    def test_false_alarm_on_dark_vessel_without_iuu(self) -> None:
-        a0 = BaselineA0(dark_vessel_threshold=1)
-        alert = a0.process_epoch(dark_vessels=1, iuu_active=False)
-        assert alert is True
+    def test_detection_rate_reflects_conservatism(self) -> None:
+        a0 = BaselineA0(dark_vessel_threshold=2)
+        # 5 epochs with IUU: only 2 have >= 2 dark vessels
+        a0.process_epoch(dark_vessels=1, iuu_active=True)
+        a0.process_epoch(dark_vessels=2, iuu_active=True)
+        a0.process_epoch(dark_vessels=1, iuu_active=True)
+        a0.process_epoch(dark_vessels=3, iuu_active=True)
+        a0.process_epoch(dark_vessels=0, iuu_active=True)
         result = a0.get_result()
-        assert result.false_alarms == 1
-        assert result.false_alarm_rate == 1.0
+        assert result.detection_rate == 2.0 / 5.0
 
 
 class TestBaselineA1:
-    def test_detects_via_sar(self) -> None:
-        a1 = BaselineA1(dark_vessel_threshold=2, sar_discrepancy_threshold=1)
-        # Only 1 dark vessel (below threshold), but SAR discrepancy
-        alert = a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
-        assert alert is True
+    def test_confirms_single_dark_with_sar(self) -> None:
+        """A1 catches single dark vessel when SAR confirms."""
+        a1 = BaselineA1()
+        # Single dark, no SAR — no alert (unlike old A1)
+        assert a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=0) is False
+        # Single dark + SAR — alert
+        assert a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1) is True
 
-    def test_no_alert_below_all_thresholds(self) -> None:
-        a1 = BaselineA1(dark_vessel_threshold=2, sar_discrepancy_threshold=2)
-        alert = a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
-        assert alert is False
+    def test_strong_ais_alone_triggers(self) -> None:
+        """A1 still alerts on strong AIS signal (>= 2) without SAR."""
+        a1 = BaselineA1()
+        assert a1.process_epoch(dark_vessels=2, iuu_active=True, sar_discrepancies=0) is True
+
+    def test_beats_a0(self) -> None:
+        """A1 should detect more than A0 when SAR provides confirmation."""
+        a0 = BaselineA0()
+        a1 = BaselineA1()
+        # Epoch where only A1 detects (dark=1, sar=1)
+        a0.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
+        a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
+        assert a0.get_result().detection_rate == 0.0
+        assert a1.get_result().detection_rate == 1.0
 
 
 class TestBaselineA2:
-    def test_detects_via_catch_anomaly(self) -> None:
-        a2 = BaselineA2(
-            dark_vessel_threshold=5, sar_discrepancy_threshold=5, catch_anomaly_threshold=0.1
-        )
+    def test_independent_catch_channel(self) -> None:
+        """A2 detects via catch anomaly even without dark vessels or SAR."""
+        a2 = BaselineA2()
+        # No AIS/SAR signal but catch anomaly
         alert = a2.process_epoch(
-            dark_vessels=0, iuu_active=True, sar_discrepancies=0, catch_anomaly=0.15
+            dark_vessels=0, iuu_active=True, sar_discrepancies=0, catch_anomaly=0.1
         )
         assert alert is True
+
+    def test_inherits_a1_detection(self) -> None:
+        """A2 still catches everything A1 catches."""
+        a2 = BaselineA2()
+        assert a2.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1) is True
+        assert a2.process_epoch(dark_vessels=2, iuu_active=True) is True
 
 
 class TestBaselineA3:
-    def test_fused_detection(self) -> None:
-        a3 = BaselineA3()
-        # Dark vessel alone triggers
-        alert = a3.process_epoch(dark_vessels=1, iuu_active=True)
+    def test_accumulates_evidence(self) -> None:
+        """A3 fires after accumulating weak signals over window."""
+        a3 = BaselineA3(window_size=4, alert_threshold=1.0)
+        # Single weak signal — not enough
+        assert a3.process_epoch(dark_vessels=1, iuu_active=True) is False
+        # Second weak signal — accumulates
+        assert a3.process_epoch(dark_vessels=1, iuu_active=True) is True
+
+    def test_catches_persistent_low_level_iuu(self) -> None:
+        """A3 detects persistent catch anomaly that single-epoch detectors miss."""
+        a3 = BaselineA3(window_size=4, alert_threshold=0.8)
+        # Small catch anomaly each epoch — too weak for A2's threshold (0.05)
+        a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.03)
+        a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.03)
+        a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.03)
+        # Adding one dark vessel pushes accumulated score over threshold
+        alert = a3.process_epoch(dark_vessels=1, iuu_active=True, catch_anomaly=0.03)
         assert alert is True
 
-    def test_multiple_epochs(self) -> None:
-        a3 = BaselineA3()
-        for _ in range(5):
-            a3.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
-        for _ in range(3):
-            a3.process_epoch(dark_vessels=0, iuu_active=False)
-        result = a3.get_result()
-        assert result.detection_rate == 1.0
-        assert result.false_alarms == 0
+    def test_window_reset_after_alert(self) -> None:
+        """Evidence window resets after alert to avoid double-counting."""
+        a3 = BaselineA3(window_size=3, alert_threshold=1.0)
+        a3.process_epoch(dark_vessels=2, iuu_active=True)  # should alert
+        # Next epoch with weak signal shouldn't alert (window cleared)
+        assert a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.01) is False
 
 
 class TestRunBaselineComparison:
@@ -103,18 +128,60 @@ class TestRunBaselineComparison:
         assert "A2_AIS_SAR_Catch" in names
         assert "A3_Full_Centralized" in names
 
-    def test_a3_beats_a0(self) -> None:
-        metrics = [
-            {
-                "dark_vessels_detected": 0,
-                "sar_ais_discrepancies": 1,
-                "iuu_vessels_active": 1,
-                "total_catch_actual": 50.0,
-                "total_catch_reported": 40.0,
-            }
-        ] * 10
+    def test_hierarchical_detection(self) -> None:
+        """Higher architectures should achieve >= detection of lower ones."""
+        # Scenario: mixed signals — some have dark vessels, some have SAR, some have catch
+        metrics = []
+        # Epochs where only A0 could detect (dark >= 2, no SAR)
+        for _ in range(5):
+            metrics.append(
+                {
+                    "dark_vessels_detected": 2,
+                    "sar_ais_discrepancies": 0,
+                    "iuu_vessels_active": 1,
+                    "total_catch_actual": 50.0,
+                    "total_catch_reported": 45.0,
+                }
+            )
+        # Epochs where A1+ can detect (dark=1, SAR=1) but A0 can't
+        for _ in range(5):
+            metrics.append(
+                {
+                    "dark_vessels_detected": 1,
+                    "sar_ais_discrepancies": 1,
+                    "iuu_vessels_active": 1,
+                    "total_catch_actual": 50.0,
+                    "total_catch_reported": 42.0,
+                }
+            )
+        # Epochs where A2+ catches via catch anomaly (no dark/SAR)
+        for _ in range(5):
+            metrics.append(
+                {
+                    "dark_vessels_detected": 0,
+                    "sar_ais_discrepancies": 0,
+                    "iuu_vessels_active": 1,
+                    "total_catch_actual": 50.0,
+                    "total_catch_reported": 40.0,
+                }
+            )
+        # Non-IUU epochs
+        for _ in range(5):
+            metrics.append(
+                {
+                    "dark_vessels_detected": 0,
+                    "sar_ais_discrepancies": 0,
+                    "iuu_vessels_active": 0,
+                    "total_catch_actual": 50.0,
+                    "total_catch_reported": 50.0,
+                }
+            )
+
         results = run_baseline_comparison(metrics)
-        a0 = next(r for r in results if r.architecture == "A0_AIS_only")
-        a3 = next(r for r in results if r.architecture == "A3_Full_Centralized")
-        # A3 should detect more than A0 when only SAR discrepancies exist
-        assert a3.detection_rate >= a0.detection_rate
+        a0 = results[0]
+        a1 = results[1]
+        a2 = results[2]
+
+        # Strict hierarchy: A0 < A1 <= A2
+        assert a1.detection_rate > a0.detection_rate
+        assert a2.detection_rate >= a1.detection_rate
