@@ -139,3 +139,69 @@ class TestSmokeScenarios:
         scores = [adapter.score_relevance(signal, u) for u in users]
         # Different users should have different relevance scores
         assert len(set(f"{s:.4f}" for s in scores)) > 1
+
+    def test_iuu_detection_rate_nonzero(self) -> None:
+        """IUU detection rate should be > 0 when dark vessels are produced."""
+        from coral_key.config import AdversaryConfig, FishStockConfig, FleetConfig, OceanConfig
+
+        config = ScenarioConfig(
+            ocean=OceanConfig(n_zones_x=4, n_zones_y=4, mpa_fraction=0.4),
+            fish=FishStockConfig(n_species=2),
+            fleet=FleetConfig(n_legal_vessels=5, n_gaming_vessels=2, n_iuu_vessels=5),
+            adversary=AdversaryConfig(ais_disable_probability=0.9),
+            total_epochs=100,
+            seed=42,
+        )
+        adapter = ReefWatchAdapter(config=config)
+        for epoch in range(100):
+            adapter.step(epoch)
+
+        biomass = adapter.fish_stock.get_total_biomass()
+        bmsy = np.array([sp.b_msy for sp in adapter.fish_stock.species])
+        cumulative = adapter.metrics_collector.compute_cumulative(biomass, bmsy)
+        # With 5 IUU vessels and 90% AIS disable, detection rate must be > 0
+        assert cumulative.iuu_detection_rate > 0
+
+    def test_stock_assessment_error_reasonable(self) -> None:
+        """Stock assessment error should reflect estimation noise, not be ~1.0."""
+        from coral_key.config import FishStockConfig, FleetConfig, OceanConfig
+
+        config = ScenarioConfig(
+            ocean=OceanConfig(n_zones_x=4, n_zones_y=4),
+            fish=FishStockConfig(n_species=2, carrying_capacity=500.0),
+            fleet=FleetConfig(n_legal_vessels=10, n_gaming_vessels=2, n_iuu_vessels=2),
+            total_epochs=100,
+            seed=42,
+        )
+        adapter = ReefWatchAdapter(config=config)
+        for epoch in range(100):
+            adapter.step(epoch)
+
+        biomass = adapter.fish_stock.get_total_biomass()
+        bmsy = np.array([sp.b_msy for sp in adapter.fish_stock.species])
+        cumulative = adapter.metrics_collector.compute_cumulative(biomass, bmsy)
+        # Error should be reasonable (not 0.998 as before)
+        assert cumulative.stock_assessment_error < 0.8
+
+    def test_baselines_produce_hierarchy(self) -> None:
+        """A3 should detect at least as well as A0 given same inputs."""
+        from coral_key.baselines import run_baseline_comparison
+        from coral_key.config import FleetConfig, OceanConfig
+
+        config = ScenarioConfig(
+            ocean=OceanConfig(n_zones_x=4, n_zones_y=4, mpa_fraction=0.3),
+            fleet=FleetConfig(n_legal_vessels=5, n_gaming_vessels=2, n_iuu_vessels=4),
+            total_epochs=100,
+            seed=42,
+        )
+        adapter = ReefWatchAdapter(config=config)
+        for epoch in range(100):
+            adapter.step(epoch)
+
+        epoch_dicts = [m.model_dump() for m in adapter.metrics_collector.epoch_history]
+        results = run_baseline_comparison(epoch_dicts)
+        assert len(results) == 4
+        a0 = results[0]
+        a3 = results[3]
+        # A3 fused approach should detect at least as much as A0
+        assert a3.detection_rate >= a0.detection_rate

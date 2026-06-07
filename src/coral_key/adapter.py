@@ -79,6 +79,8 @@ class ReefWatchAdapter(DomainAdapter):
             fleet_config=self._config.fleet,
             adversary_config=self._config.adversary,
             n_species=self._config.fish.n_species,
+            catch_efficiency=self._config.fish.catch_efficiency,
+            carrying_capacity=self._config.fish.carrying_capacity,
             rng=self._rng,
         )
 
@@ -173,7 +175,10 @@ class ReefWatchAdapter(DomainAdapter):
         habitat = self._oceanography.compute_fish_habitat_suitability(self._ocean_state)
 
         # 2. Fleet operations (returns total actual catch)
-        fish_dist = np.array([sp.spatial_distribution for sp in self._fish_stock.species])
+        # Pass actual local biomass (biomass * spatial fraction) so catch scales with stock
+        fish_dist = np.array(
+            [sp.biomass * sp.spatial_distribution for sp in self._fish_stock.species]
+        )
         catch = self._fleet.step(
             epoch=time_step,
             fish_distribution=fish_dist,
@@ -214,6 +219,38 @@ class ReefWatchAdapter(DomainAdapter):
                 platform_interference_events=1 if interfered else 0,
             )
         )
+
+        # 6. Biomass estimation (CPUE-based with noise) for stock assessment metric
+        # Only estimate when there's catch data (vessels are fishing)
+        if reported_catch.sum() > 0:
+            actual_biomass = self._fish_stock.get_total_biomass()
+            estimated_biomass = self._estimate_biomass(reported_catch)
+            self._metrics.record_biomass_estimate(estimated_biomass, actual_biomass)
+
+    def _estimate_biomass(self, reported_catch: np.ndarray) -> np.ndarray:
+        """Produce a noisy biomass estimate from reported catch (simulates assessment).
+
+        Inverts the catch model: C ≈ efficiency * B/n_zones * n_active * E[noise].
+        So: B_est = C * n_zones / (n_active * efficiency * mean_catch_noise).
+        The mean of Uniform(0.5, 2.0) is 1.25.
+        """
+        n_active = sum(1 for v in self._fleet.vessels if not v.at_port)
+        effort = max(1, n_active)
+        efficiency = self._config.fish.catch_efficiency
+        n_species = self._config.fish.n_species
+        mean_catch_noise = 1.25  # E[Uniform(0.5, 2.0)]
+
+        estimates = np.zeros(n_species)
+        for i in range(n_species):
+            catch_i = reported_catch[i] if i < len(reported_catch) else 0.0
+            if catch_i > 0 and efficiency > 0:
+                raw_estimate = catch_i * self._n_zones / (effort * efficiency * mean_catch_noise)
+            else:
+                raw_estimate = self._config.fish.carrying_capacity
+            # Add observation noise (10% CV)
+            noise = float(self._rng.normal(0, 0.10 * raw_estimate))
+            estimates[i] = max(1.0, raw_estimate + noise)
+        return estimates
 
     def _generate_observations(self, epoch: int) -> list[np.ndarray]:
         """Generate all sensor observations for this epoch."""

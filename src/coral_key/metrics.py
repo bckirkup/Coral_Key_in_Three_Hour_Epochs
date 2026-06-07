@@ -47,12 +47,23 @@ class MetricsCollector:
         self._false_escalations: int = 0
         self._total_actual_catch = np.zeros(n_species)
         self._total_reported_catch = np.zeros(n_species)
+        self._biomass_estimates: list[np.ndarray] = []
+        self._biomass_actuals: list[np.ndarray] = []
 
     def record_epoch(self, metrics: EpochMetrics) -> None:
-        """Record a single epoch's metrics."""
+        """Record a single epoch's metrics.
+
+        IUU is considered "detected" if dark vessels or SAR-AIS discrepancies
+        were observed in this epoch.
+        """
         self._epoch_history.append(metrics)
         if metrics.iuu_vessels_active > 0:
             self._iuu_active_epochs += 1
+        # Detection: dark vessels found or SAR-AIS discrepancies while IUU was active
+        if metrics.iuu_vessels_active > 0 and (
+            metrics.dark_vessels_detected > 0 or metrics.sar_ais_discrepancies > 0
+        ):
+            self._iuu_detected_epochs += 1
 
     def record_escalation(self, *, correct: bool) -> None:
         """Record an escalation event."""
@@ -66,6 +77,11 @@ class MetricsCollector:
         """Record actual vs reported catch."""
         self._total_actual_catch += actual[: self._n_species]
         self._total_reported_catch += reported[: self._n_species]
+
+    def record_biomass_estimate(self, estimated: np.ndarray, actual: np.ndarray) -> None:
+        """Record biomass estimate vs actual for stock assessment error."""
+        self._biomass_estimates.append(estimated.copy())
+        self._biomass_actuals.append(actual.copy())
 
     def compute_cumulative(
         self,
@@ -88,11 +104,19 @@ class MetricsCollector:
             underreport = (actual_sum - reported_sum) / actual_sum
             catch_detection = min(1.0, underreport)
 
-        # Stock assessment error: mean absolute relative error
-        safe_bmsy = np.where(bmsy > 0, bmsy, 1.0)
-        stock_error = float(np.mean(np.abs(final_biomass - safe_bmsy) / safe_bmsy))
+        # Stock assessment error: mean absolute relative error of estimates vs actuals
+        if self._biomass_estimates:
+            estimates = np.array(self._biomass_estimates)
+            actuals = np.array(self._biomass_actuals)
+            safe_actuals = np.where(actuals > 0, actuals, 1.0)
+            stock_error = float(np.mean(np.abs(estimates - actuals) / safe_actuals))
+        else:
+            # Fallback: no estimates recorded, use final biomass vs BMSY
+            safe_bmsy = np.where(bmsy > 0, bmsy, 1.0)
+            stock_error = float(np.mean(np.abs(final_biomass - safe_bmsy) / safe_bmsy))
 
         # Biomass relative to BMSY
+        safe_bmsy = np.where(bmsy > 0, bmsy, 1.0)
         biomass_ratio = float(np.mean(final_biomass / safe_bmsy))
 
         # Economic loss: catch from IUU relative to total

@@ -26,6 +26,9 @@ class FishStockConfig(BaseModel):
     carrying_capacity: float = Field(default=1000.0, gt=0.0, description="K per species")
     intrinsic_growth_rate: float = Field(default=0.3, gt=0.0, description="r parameter")
     catchability: float = Field(default=0.001, gt=0.0, description="q coefficient for CPUE")
+    catch_efficiency: float = Field(
+        default=0.1, gt=0.0, description="Fleet catch efficiency scaling per vessel per epoch"
+    )
     observation_noise_std: float = Field(
         default=0.2, ge=0.0, description="Log-normal obs noise for CPUE"
     )

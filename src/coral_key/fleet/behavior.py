@@ -18,12 +18,16 @@ class FleetManager:
         fleet_config: FleetConfig,
         adversary_config: AdversaryConfig,
         n_species: int,
+        catch_efficiency: float = 0.1,
+        carrying_capacity: float = 1000.0,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._grid = grid
         self._fleet_cfg = fleet_config
         self._adv_cfg = adversary_config
         self._n_species = n_species
+        self._catch_efficiency = catch_efficiency
+        self._carrying_capacity = carrying_capacity
         self._rng = rng or np.random.default_rng()
         self.vessels: list[Vessel] = []
         self._initialize_fleet()
@@ -124,7 +128,12 @@ class FleetManager:
         fish_distribution: np.ndarray,
         enforcement_pressure: float,
     ) -> np.ndarray:
-        """Compute catch for a vessel at its current zone."""
+        """Compute catch for a vessel at its current zone.
+
+        Catch = efficiency * local_biomass * effort_multiplier * noise.
+        fish_distribution contains actual biomass per zone (biomass * spatial_frac),
+        so catch naturally decreases as stocks deplete.
+        """
         zone_idx = vessel.position.zone_y * self._grid.nx + vessel.position.zone_x
         zone_idx = min(zone_idx, fish_distribution.shape[1] - 1)
 
@@ -136,9 +145,14 @@ class FleetManager:
         elif vessel.vessel_type == VesselType.GAMING:
             base_effort = 1.1
 
-        # Catch per species proportional to local biomass fraction
-        local_biomass_frac = fish_distribution[:, zone_idx]
-        catch = base_effort * local_biomass_frac * self._rng.uniform(0.5, 2.0, self._n_species)
+        # Catch per species: proportional to actual local biomass
+        local_biomass = fish_distribution[:, zone_idx]
+        catch = (
+            self._catch_efficiency
+            * base_effort
+            * local_biomass
+            * self._rng.uniform(0.5, 2.0, self._n_species)
+        )
         return np.clip(catch, 0.0, None)
 
     def _update_ais(self, vessel: Vessel, enforcement_pressure: float) -> None:
