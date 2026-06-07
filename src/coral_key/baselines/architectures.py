@@ -1,15 +1,19 @@
 """Baseline comparator architectures (A0-A3) for ReefWatch falsification.
 
-A0: AIS-only surveillance (cheapest, lowest capability)
-A1: AIS + SAR fusion (adds satellite dark-vessel detection)
-A2: AIS + SAR + Catch reports (adds reported-catch anomaly detection)
-A3: Full centralized fusion (AIS + SAR + catch + oceanographic) — the system to beat
+Each architecture uses a fundamentally different decision strategy:
+
+A0: AIS-only, conservative threshold (cheapest — requires blatant multi-vessel evidence)
+A1: AIS + SAR confirmation (corroboration lowers false alarms, improves detection)
+A2: Multi-source OR (adds catch-anomaly as independent channel — catches gaming)
+A3: Temporal evidence accumulator (fuses weak signals across a sliding window)
 
 The BMA/TattleTots ecology must beat A3 on at least one metric at equal or lower cost,
 or match A3 at significantly lower patrol cost.
 """
 
 from __future__ import annotations
+
+from collections import deque
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -29,15 +33,10 @@ class BaselineResult(BaseModel):
     mean_detection_latency: float = Field(default=0.0, ge=0.0)
 
 
-class BaselineA0:
-    """A0: AIS-only surveillance.
+class _BaseTracker:
+    """Shared bookkeeping for detection/false-alarm tracking."""
 
-    Detects IUU by flagging dark vessels (AIS gaps).
-    Cheapest architecture, but blind to AIS-spoofing and off-grid fishing.
-    """
-
-    def __init__(self, dark_vessel_threshold: int = 1) -> None:
-        self._threshold = dark_vessel_threshold
+    def __init__(self) -> None:
         self._detections = 0
         self._false_alarms = 0
         self._total_alerts = 0
@@ -47,16 +46,7 @@ class BaselineA0:
         self._epochs_since_iuu_start = 0
         self._iuu_was_active = False
 
-    def process_epoch(
-        self,
-        dark_vessels: int,
-        iuu_active: bool,
-        *,
-        sar_discrepancies: int = 0,
-        catch_anomaly: float = 0.0,
-        ocean_anomaly: float = 0.0,
-    ) -> bool:
-        """Process one epoch. Returns True if alert raised."""
+    def _track_iuu_state(self, iuu_active: bool) -> None:
         if iuu_active:
             self._iuu_active_epochs += 1
             if not self._iuu_was_active:
@@ -67,60 +57,83 @@ class BaselineA0:
             self._iuu_was_active = False
             self._epochs_since_iuu_start = 0
 
+    def _record_alert(self, iuu_active: bool) -> None:
+        self._total_alerts += 1
+        if iuu_active:
+            self._detections += 1
+            self._detected_epochs += 1
+            self._latencies.append(self._epochs_since_iuu_start)
+        else:
+            self._false_alarms += 1
+
+    def _build_result(self, name: str, patrol_cost_per_alert: float) -> BaselineResult:
+        detection_rate = 0.0
+        if self._iuu_active_epochs > 0:
+            detection_rate = self._detected_epochs / self._iuu_active_epochs
+        false_alarm_rate = 0.0
+        if self._total_alerts > 0:
+            false_alarm_rate = self._false_alarms / self._total_alerts
+        return BaselineResult(
+            architecture=name,
+            iuu_detections=self._detections,
+            false_alarms=self._false_alarms,
+            total_alerts=self._total_alerts,
+            detection_rate=detection_rate,
+            false_alarm_rate=false_alarm_rate,
+            patrol_cost=self._total_alerts * patrol_cost_per_alert,
+            mean_detection_latency=(float(np.mean(self._latencies)) if self._latencies else 0.0),
+        )
+
+
+class BaselineA0(_BaseTracker):
+    """A0: AIS-only surveillance with conservative threshold.
+
+    Requires multiple simultaneous dark vessels to raise alert.
+    Cheapest but lowest detection rate — only catches blatant multi-vessel AIS gaps.
+    """
+
+    def __init__(self, dark_vessel_threshold: int = 2) -> None:
+        super().__init__()
+        self._threshold = dark_vessel_threshold
+
+    def process_epoch(
+        self,
+        dark_vessels: int,
+        iuu_active: bool,
+        *,
+        sar_discrepancies: int = 0,
+        catch_anomaly: float = 0.0,
+        ocean_anomaly: float = 0.0,
+    ) -> bool:
+        """Alert only when dark vessel count is clearly anomalous (≥ threshold)."""
+        self._track_iuu_state(iuu_active)
         alert = dark_vessels >= self._threshold
         if alert:
-            self._total_alerts += 1
-            if iuu_active:
-                self._detections += 1
-                self._detected_epochs += 1
-                self._latencies.append(self._epochs_since_iuu_start)
-            else:
-                self._false_alarms += 1
+            self._record_alert(iuu_active)
         return alert
 
     def get_result(self, patrol_cost_per_alert: float = 50.0) -> BaselineResult:
-        """Compute final baseline metrics."""
-        detection_rate = 0.0
-        if self._iuu_active_epochs > 0:
-            detection_rate = self._detected_epochs / self._iuu_active_epochs
-        false_alarm_rate = 0.0
-        if self._total_alerts > 0:
-            false_alarm_rate = self._false_alarms / self._total_alerts
-
-        return BaselineResult(
-            architecture="A0_AIS_only",
-            iuu_detections=self._detections,
-            false_alarms=self._false_alarms,
-            total_alerts=self._total_alerts,
-            detection_rate=detection_rate,
-            false_alarm_rate=false_alarm_rate,
-            patrol_cost=self._total_alerts * patrol_cost_per_alert,
-            mean_detection_latency=float(np.mean(self._latencies)) if self._latencies else 0.0,
-        )
+        return self._build_result("A0_AIS_only", patrol_cost_per_alert)
 
 
-class BaselineA1:
-    """A1: AIS + SAR fusion.
+class BaselineA1(_BaseTracker):
+    """A1: AIS + SAR cross-reference (corroboration strategy).
 
-    Combines AIS dark-vessel detection with SAR satellite cross-referencing.
-    Better at detecting AIS-disabled vessels via SAR confirmation.
+    Uses SAR to confirm AIS gaps: alerts on single dark vessel only when
+    SAR also shows a discrepancy. Can also alert on strong AIS signal alone
+    (≥ A0 threshold). Better precision than A0 at similar recall.
     """
 
     def __init__(
         self,
-        dark_vessel_threshold: int = 1,
-        sar_discrepancy_threshold: int = 1,
+        strong_dark_threshold: int = 2,
+        weak_dark_threshold: int = 1,
+        sar_confirmation_threshold: int = 1,
     ) -> None:
-        self._dark_thresh = dark_vessel_threshold
-        self._sar_thresh = sar_discrepancy_threshold
-        self._detections = 0
-        self._false_alarms = 0
-        self._total_alerts = 0
-        self._iuu_active_epochs = 0
-        self._detected_epochs = 0
-        self._latencies: list[int] = []
-        self._epochs_since_iuu_start = 0
-        self._iuu_was_active = False
+        super().__init__()
+        self._strong_thresh = strong_dark_threshold
+        self._weak_thresh = weak_dark_threshold
+        self._sar_thresh = sar_confirmation_threshold
 
     def process_epoch(
         self,
@@ -131,72 +144,41 @@ class BaselineA1:
         catch_anomaly: float = 0.0,
         ocean_anomaly: float = 0.0,
     ) -> bool:
-        """Process one epoch. Alerts on AIS dark OR SAR discrepancy."""
-        if iuu_active:
-            self._iuu_active_epochs += 1
-            if not self._iuu_was_active:
-                self._epochs_since_iuu_start = 0
-            self._epochs_since_iuu_start += 1
-            self._iuu_was_active = True
-        else:
-            self._iuu_was_active = False
-            self._epochs_since_iuu_start = 0
-
-        alert = dark_vessels >= self._dark_thresh or sar_discrepancies >= self._sar_thresh
+        """Alert on strong AIS signal OR (weak AIS + SAR confirmation)."""
+        self._track_iuu_state(iuu_active)
+        alert = dark_vessels >= self._strong_thresh or (
+            dark_vessels >= self._weak_thresh and sar_discrepancies >= self._sar_thresh
+        )
         if alert:
-            self._total_alerts += 1
-            if iuu_active:
-                self._detections += 1
-                self._detected_epochs += 1
-                self._latencies.append(self._epochs_since_iuu_start)
-            else:
-                self._false_alarms += 1
+            self._record_alert(iuu_active)
         return alert
 
     def get_result(self, patrol_cost_per_alert: float = 50.0) -> BaselineResult:
-        detection_rate = 0.0
-        if self._iuu_active_epochs > 0:
-            detection_rate = self._detected_epochs / self._iuu_active_epochs
-        false_alarm_rate = 0.0
-        if self._total_alerts > 0:
-            false_alarm_rate = self._false_alarms / self._total_alerts
-
-        return BaselineResult(
-            architecture="A1_AIS_SAR",
-            iuu_detections=self._detections,
-            false_alarms=self._false_alarms,
-            total_alerts=self._total_alerts,
-            detection_rate=detection_rate,
-            false_alarm_rate=false_alarm_rate,
-            patrol_cost=self._total_alerts * patrol_cost_per_alert,
-            mean_detection_latency=float(np.mean(self._latencies)) if self._latencies else 0.0,
-        )
+        return self._build_result("A1_AIS_SAR", patrol_cost_per_alert)
 
 
-class BaselineA2:
-    """A2: AIS + SAR + Catch reports.
+class BaselineA2(_BaseTracker):
+    """A2: Multi-source with independent catch channel.
 
-    Adds catch underreporting detection to A1's vessel-tracking capabilities.
-    Detects gaming/IUU through discrepancies in reported catch vs expected.
+    Adds catch-anomaly as an independent detection channel. Can detect IUU/gaming
+    even when AIS is enabled (no dark vessels). Three pathways to alert:
+    1. Strong AIS signal (≥ blatant threshold)
+    2. AIS + SAR confirmation (same as A1)
+    3. Catch anomaly exceeds threshold (independent of vessel tracking)
     """
 
     def __init__(
         self,
-        dark_vessel_threshold: int = 1,
-        sar_discrepancy_threshold: int = 1,
-        catch_anomaly_threshold: float = 0.1,
+        strong_dark_threshold: int = 2,
+        weak_dark_threshold: int = 1,
+        sar_confirmation_threshold: int = 1,
+        catch_anomaly_threshold: float = 0.05,
     ) -> None:
-        self._dark_thresh = dark_vessel_threshold
-        self._sar_thresh = sar_discrepancy_threshold
+        super().__init__()
+        self._strong_thresh = strong_dark_threshold
+        self._weak_thresh = weak_dark_threshold
+        self._sar_thresh = sar_confirmation_threshold
         self._catch_thresh = catch_anomaly_threshold
-        self._detections = 0
-        self._false_alarms = 0
-        self._total_alerts = 0
-        self._iuu_active_epochs = 0
-        self._detected_epochs = 0
-        self._latencies: list[int] = []
-        self._epochs_since_iuu_start = 0
-        self._iuu_was_active = False
 
     def process_epoch(
         self,
@@ -207,81 +189,50 @@ class BaselineA2:
         catch_anomaly: float = 0.0,
         ocean_anomaly: float = 0.0,
     ) -> bool:
-        """Alert on AIS dark OR SAR discrepancy OR catch anomaly."""
-        if iuu_active:
-            self._iuu_active_epochs += 1
-            if not self._iuu_was_active:
-                self._epochs_since_iuu_start = 0
-            self._epochs_since_iuu_start += 1
-            self._iuu_was_active = True
-        else:
-            self._iuu_was_active = False
-            self._epochs_since_iuu_start = 0
-
-        alert = (
-            dark_vessels >= self._dark_thresh
-            or sar_discrepancies >= self._sar_thresh
-            or catch_anomaly >= self._catch_thresh
+        """Alert on strong AIS OR (weak AIS + SAR) OR catch anomaly."""
+        self._track_iuu_state(iuu_active)
+        ais_strong = dark_vessels >= self._strong_thresh
+        ais_sar_confirmed = (
+            dark_vessels >= self._weak_thresh and sar_discrepancies >= self._sar_thresh
         )
+        catch_alert = catch_anomaly >= self._catch_thresh
+        alert = ais_strong or ais_sar_confirmed or catch_alert
         if alert:
-            self._total_alerts += 1
-            if iuu_active:
-                self._detections += 1
-                self._detected_epochs += 1
-                self._latencies.append(self._epochs_since_iuu_start)
-            else:
-                self._false_alarms += 1
+            self._record_alert(iuu_active)
         return alert
 
     def get_result(self, patrol_cost_per_alert: float = 50.0) -> BaselineResult:
-        detection_rate = 0.0
-        if self._iuu_active_epochs > 0:
-            detection_rate = self._detected_epochs / self._iuu_active_epochs
-        false_alarm_rate = 0.0
-        if self._total_alerts > 0:
-            false_alarm_rate = self._false_alarms / self._total_alerts
-
-        return BaselineResult(
-            architecture="A2_AIS_SAR_Catch",
-            iuu_detections=self._detections,
-            false_alarms=self._false_alarms,
-            total_alerts=self._total_alerts,
-            detection_rate=detection_rate,
-            false_alarm_rate=false_alarm_rate,
-            patrol_cost=self._total_alerts * patrol_cost_per_alert,
-            mean_detection_latency=float(np.mean(self._latencies)) if self._latencies else 0.0,
-        )
+        return self._build_result("A2_AIS_SAR_Catch", patrol_cost_per_alert)
 
 
-class BaselineA3:
-    """A3: Full centralized fusion (AIS + SAR + Catch + Oceanographic).
+class BaselineA3(_BaseTracker):
+    """A3: Temporal evidence accumulator (sliding window fusion).
 
-    The architecture to beat. Combines all non-BMA sensor modalities with
-    threshold-based fusion. Uses oceanographic context (habitat suitability)
-    to weight detection probability.
+    Accumulates evidence across all modalities over a sliding window.
+    Can detect persistent low-level IUU that no single epoch makes obvious.
+    Most expensive but highest detection rate with managed false alarms.
+
+    Decision: sum evidence weights over last `window_size` epochs.
+    Alert when accumulated score exceeds `alert_threshold`.
     """
 
     def __init__(
         self,
-        dark_vessel_threshold: int = 1,
-        sar_discrepancy_threshold: int = 1,
-        catch_anomaly_threshold: float = 0.08,
-        ocean_anomaly_weight: float = 0.3,
+        window_size: int = 4,
+        alert_threshold: float = 1.0,
+        dark_vessel_weight: float = 0.6,
+        sar_weight: float = 0.4,
+        catch_weight: float = 0.5,
+        ocean_weight: float = 0.2,
     ) -> None:
-        self._dark_thresh = dark_vessel_threshold
-        self._sar_thresh = sar_discrepancy_threshold
-        self._catch_thresh = catch_anomaly_threshold
-        self._ocean_weight = ocean_anomaly_weight
-        self._detections = 0
-        self._false_alarms = 0
-        self._total_alerts = 0
-        self._iuu_active_epochs = 0
-        self._detected_epochs = 0
-        self._latencies: list[int] = []
-        self._epochs_since_iuu_start = 0
-        self._iuu_was_active = False
-        # Stock assessment: running CPUE estimate
-        self._cpue_estimates: list[float] = []
+        super().__init__()
+        self._window_size = window_size
+        self._alert_threshold = alert_threshold
+        self._dark_w = dark_vessel_weight
+        self._sar_w = sar_weight
+        self._catch_w = catch_weight
+        self._ocean_w = ocean_weight
+        self._evidence_window: deque[float] = deque(maxlen=window_size)
 
     def process_epoch(
         self,
@@ -292,58 +243,33 @@ class BaselineA3:
         catch_anomaly: float = 0.0,
         ocean_anomaly: float = 0.0,
     ) -> bool:
-        """Fused alert: any single modality OR weighted combination exceeds threshold."""
-        if iuu_active:
-            self._iuu_active_epochs += 1
-            if not self._iuu_was_active:
-                self._epochs_since_iuu_start = 0
-            self._epochs_since_iuu_start += 1
-            self._iuu_was_active = True
-        else:
-            self._iuu_was_active = False
-            self._epochs_since_iuu_start = 0
+        """Accumulate evidence; alert when window sum exceeds threshold."""
+        self._track_iuu_state(iuu_active)
 
-        # Composite score: weighted sum of normalized indicators
-        score = 0.0
-        if dark_vessels >= self._dark_thresh:
-            score += 0.4
-        if sar_discrepancies >= self._sar_thresh:
-            score += 0.3
-        if catch_anomaly >= self._catch_thresh:
-            score += 0.2
-        score += self._ocean_weight * ocean_anomaly
+        # Compute per-epoch evidence score
+        epoch_score = 0.0
+        if dark_vessels >= 1:
+            epoch_score += self._dark_w * min(dark_vessels, 3)
+        if sar_discrepancies >= 1:
+            epoch_score += self._sar_w * min(sar_discrepancies, 3)
+        if catch_anomaly > 0:
+            epoch_score += self._catch_w * min(catch_anomaly / 0.15, 1.0)
+        epoch_score += self._ocean_w * ocean_anomaly
 
-        # Alert if any strong signal OR composite exceeds threshold
-        alert = score >= 0.3
+        self._evidence_window.append(epoch_score)
+
+        # Alert when accumulated evidence over window exceeds threshold
+        window_sum = sum(self._evidence_window)
+        alert = window_sum >= self._alert_threshold
 
         if alert:
-            self._total_alerts += 1
-            if iuu_active:
-                self._detections += 1
-                self._detected_epochs += 1
-                self._latencies.append(self._epochs_since_iuu_start)
-            else:
-                self._false_alarms += 1
+            self._record_alert(iuu_active)
+            # Partial reset to avoid re-alerting on same evidence
+            self._evidence_window.clear()
         return alert
 
     def get_result(self, patrol_cost_per_alert: float = 50.0) -> BaselineResult:
-        detection_rate = 0.0
-        if self._iuu_active_epochs > 0:
-            detection_rate = self._detected_epochs / self._iuu_active_epochs
-        false_alarm_rate = 0.0
-        if self._total_alerts > 0:
-            false_alarm_rate = self._false_alarms / self._total_alerts
-
-        return BaselineResult(
-            architecture="A3_Full_Centralized",
-            iuu_detections=self._detections,
-            false_alarms=self._false_alarms,
-            total_alerts=self._total_alerts,
-            detection_rate=detection_rate,
-            false_alarm_rate=false_alarm_rate,
-            patrol_cost=self._total_alerts * patrol_cost_per_alert,
-            mean_detection_latency=float(np.mean(self._latencies)) if self._latencies else 0.0,
-        )
+        return self._build_result("A3_Full_Centralized", patrol_cost_per_alert)
 
 
 def run_baseline_comparison(
