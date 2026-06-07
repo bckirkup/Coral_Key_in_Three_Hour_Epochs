@@ -34,6 +34,48 @@ class TestMetricsCollector:
         assert result.stock_assessment_error >= 0
         assert result.catch_underreporting_detection >= 0
 
+    def test_iuu_detection_wiring(self) -> None:
+        """IUU is detected when dark vessels or SAR discrepancies appear during IUU epochs."""
+        collector = MetricsCollector(n_species=1)
+
+        # Epoch with IUU active + dark vessel = detection
+        collector.record_epoch(EpochMetrics(epoch=0, iuu_vessels_active=2, dark_vessels_detected=1))
+        # Epoch with IUU active but no detection signal
+        collector.record_epoch(EpochMetrics(epoch=1, iuu_vessels_active=1, dark_vessels_detected=0))
+        # Epoch with IUU + SAR discrepancy = detection
+        collector.record_epoch(EpochMetrics(epoch=2, iuu_vessels_active=1, sar_ais_discrepancies=2))
+
+        result = collector.compute_cumulative(np.array([500.0]), np.array([500.0]))
+        # 3 IUU-active epochs, 2 detected
+        assert result.iuu_detection_rate == 2.0 / 3.0
+
+    def test_biomass_estimate_tracking(self) -> None:
+        """Stock assessment error uses recorded estimates vs actuals."""
+        collector = MetricsCollector(n_species=2)
+
+        # Perfect estimates: error should be ~0
+        for _ in range(5):
+            collector.record_biomass_estimate(
+                estimated=np.array([500.0, 400.0]),
+                actual=np.array([500.0, 400.0]),
+            )
+
+        result = collector.compute_cumulative(np.array([500.0, 400.0]), np.array([500.0, 500.0]))
+        assert result.stock_assessment_error < 0.01
+
+    def test_biomass_estimate_with_error(self) -> None:
+        """Noisy estimates produce non-zero stock assessment error."""
+        collector = MetricsCollector(n_species=1)
+
+        collector.record_biomass_estimate(
+            estimated=np.array([600.0]),
+            actual=np.array([500.0]),
+        )
+
+        result = collector.compute_cumulative(np.array([500.0]), np.array([250.0]))
+        # Error = |600-500|/500 = 0.2
+        assert abs(result.stock_assessment_error - 0.2) < 0.01
+
     def test_escalation_tracking(self) -> None:
         collector = MetricsCollector(n_species=1)
         collector.record_escalation(correct=True)
