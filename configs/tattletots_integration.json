@@ -1,0 +1,49 @@
+{
+  "simulation": {
+    "initial_population": 20,
+    "max_population": 60,
+    "max_steps": 400,
+    "seed": 42,
+    "mutation_rate": 0.1,
+    "recombination_probability": 0.3,
+    "false_alarm_penalty": 0.4,
+    "trust_delta_neg": 0.2,
+    "trust_delta_pos": 0.05,
+    "trust_delta_miss": 0.15,
+    "subsidy_rate": 0.1,
+    "max_stream_dim": 30
+  },
+  "domain": {
+    "total_epochs": 400,
+    "seed": 42,
+    "epoch_hours": 3.0,
+    "ocean": {
+      "n_zones_x": 6,
+      "n_zones_y": 6,
+      "mpa_fraction": 0.2,
+      "n_ports": 2
+    },
+    "fish": {
+      "n_species": 3,
+      "carrying_capacity": 1000.0,
+      "intrinsic_growth_rate": 0.3,
+      "catchability": 0.001
+    },
+    "fleet": {
+      "n_legal_vessels": 15,
+      "n_gaming_vessels": 4,
+      "n_iuu_vessels": 3,
+      "enforcement_pressure": 0.3
+    },
+    "sensors": {
+      "ais_update_interval": 1,
+      "sar_revisit_interval": 8,
+      "edna_sample_interval": 56
+    },
+    "adversary": {
+      "ais_disable_probability": 0.7,
+      "spoof_probability": 0.3,
+      "platform_interference_rate": 0.05
+    }
+  }
+}
