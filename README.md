@@ -108,6 +108,21 @@ src/coral_key/
 - Stock assessment error (biomass vs. BMSY)
 - Economic loss to IUU
 
+## Integrated Mode (with TattleTots Agent Ecology)
+
+Run the full integration — domain generates sensor streams while TattleTots agents compress, escalate, evolve, and compete:
+
+```bash
+python scripts/run_with_tattletots.py \
+    --config configs/tattletots_integration.json \
+    --output results.json \
+    --verbose
+```
+
+This produces unified JSON output (`tattletots.output_schema.SimulationOutput`) with consistent `ecology_metrics` and `cost_metrics` fields, enabling cross-domain comparison with the sibling repos ([Xylella_SPQR](https://github.com/bckirkup/Xylella_SPQR), [Scrapiron_and_the_Bear](https://github.com/bckirkup/Scrapiron_and_the_Bear)).
+
+See [docs/COORDINATION.md](docs/COORDINATION.md) for full coordination guide, configuration reference, and comparison examples.
+
 ## Development
 
 ```bash
