@@ -58,8 +58,45 @@ The adapter implements `tattletots.interface.domain_adapter.DomainAdapter`:
 - `score_relevance(signal, user)` → domain-specific relevance scoring
 - `compute_costs(...)` → patrol, boarding, and damage costs
 
+## Integrated Mode (TattleTots Agent Ecology)
+
+```bash
+python scripts/run_with_tattletots.py \
+    --config configs/tattletots_integration.json \
+    --output results.json --verbose
+```
+
+Output conforms to `tattletots.output_schema.SimulationOutput` (unified JSON).
+See `docs/COORDINATION.md` for coordination with sibling repos.
+
+## GPU Acceleration
+
+```bash
+pip install -e ".[gpu]"  # installs cupy-cuda12x
+```
+
+Set `"use_gpu": true` in the `"simulation"` section of the integration config.
+Falls back silently to NumPy if CuPy or CUDA is unavailable.
+
+## Parameter Scans
+
+Generate config variants and run in parallel for large sweeps:
+
+```bash
+python scripts/run_with_tattletots.py --config <variant>.json --output results/<name>.json
+```
+
+Key domain parameters to sweep: `total_epochs`, `n_iuu_vessels`, `n_gaming_vessels`,
+`grid_size`, `seed`.
+
+Load results:
+```python
+from tattletots.output_schema import SimulationOutput
+result = SimulationOutput.model_validate_json(path.read_text())
+```
+
 ## Key Dependencies
-- `tattletots` (the engine this domain plugs into)
+- `tattletots` (installed from GitHub: `git+https://github.com/bckirkup/TattleTots.git`)
 - `numpy`
 - `pydantic>=2.0`
 
