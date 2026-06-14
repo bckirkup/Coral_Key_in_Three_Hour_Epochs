@@ -32,5 +32,6 @@ Thumbs.db
 # Output
 *.json
 !scenario.json
+!configs/*.json
 telemetry_buffer/
 results/
