@@ -34,7 +34,7 @@ class TestTattleTotsIntegration:
 
         for step in range(50):
             adapter.step(step)
-            world.set_ground_truth(adapter.get_ground_truth(step))
+            world.set_event_state(adapter.get_active_locations(step))
             world.step()
 
         # Ecology should survive 50 steps
@@ -59,7 +59,7 @@ class TestTattleTotsIntegration:
 
         for step in range(100):
             adapter.step(step)
-            world.set_ground_truth(adapter.get_ground_truth(step))
+            world.set_event_state(adapter.get_active_locations(step))
             world.step()
 
         # After 100 steps, at least some agents should have input streams
