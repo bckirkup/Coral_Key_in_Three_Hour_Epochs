@@ -55,8 +55,19 @@ The adapter implements `tattletots.interface.domain_adapter.DomainAdapter`:
 - `get_users()` → 3 user profiles (Patrol Commander, Stock Scientist, Policy Director)
 - `step(time_step)` → advance simulation by one 3-hour epoch
 - `get_ground_truth(time_step)` → whether IUU is currently active
+- `get_active_locations(time_step)` → returns `(zone_x, zone_y)` for each active IUU vessel
+- `infer_report_location(stream_data, stream_labels)` → finds peak in AIS stream → maps to grid zone
 - `score_relevance(signal, user)` → domain-specific relevance scoring
 - `compute_costs(...)` → patrol, boarding, and damage costs
+
+**Note:** The integration loop uses `world.set_event_state(adapter.get_active_locations(epoch))` (not `set_ground_truth`). The engine verifies report correctness per-location.
+
+### Baselines
+
+Standalone baseline comparison files live in `baselines/`:
+- `run_coral_key_baselines.py` — Parameter scan runner for A0-A3 architectures
+- `coral_key_baselines_config.json` — Scan configuration
+- `coral_key_baselines_results.zip` — Pre-computed results
 
 ## Integrated Mode (TattleTots Agent Ecology)
 
