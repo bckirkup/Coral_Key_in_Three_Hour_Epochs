@@ -23,14 +23,14 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 
 # Import Coral Key modules
 from coral_key.adapter import ReefWatchAdapter
-from coral_key.config import ScenarioConfig
 from coral_key.baselines.architectures import run_baseline_comparison
+from coral_key.config import ScenarioConfig
 
 
 def run_single_simulation(
@@ -39,11 +39,11 @@ def run_single_simulation(
     seed: int,
     iuu_vessels: int,
     sar_revisit: int,
-    adv_params: Dict[str, float],
-) -> Dict[str, Any]:
+    adv_params: dict[str, float],
+) -> dict[str, Any]:
     """Runs a single Coral Key simulation and evaluates all 4 baseline architectures."""
     start_time = time.time()
-    
+
     # 1. Build ScenarioConfig
     config = ScenarioConfig()
     config.total_epochs = epochs
@@ -92,9 +92,7 @@ def run_single_simulation(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Parameter Scan Runner for Coral Key Baselines"
-    )
+    parser = argparse.ArgumentParser(description="Parameter Scan Runner for Coral Key Baselines")
     parser.add_argument(
         "--config",
         type=Path,
@@ -125,11 +123,15 @@ def main() -> int:
         print(f"[-] Error: Config file not found at {args.config}")
         return 1
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config_data = json.load(f)
 
     # 2. Determine output directory and steps
-    output_dir_name = "coral_key_baselines_smoke_results" if args.smoke_test else config_data.get("output_directory", "coral_key_baselines_results")
+    output_dir_name = (
+        "coral_key_baselines_smoke_results"
+        if args.smoke_test
+        else config_data.get("output_directory", "coral_key_baselines_results")
+    )
     output_dir = Path(output_dir_name).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -149,19 +151,21 @@ def main() -> int:
                 for seed in seeds:
                     run_name = f"ck_baselines_iuu{iuu}_adv{adv}_sar{sar}_s{seed}"
                     adv_params = config_data["adversary_levels"][adv]
-                    runs_to_execute.append({
-                        "name": run_name,
-                        "epochs": epochs,
-                        "seed": seed,
-                        "iuu_vessels": iuu,
-                        "sar_revisit": sar,
-                        "adv_params": adv_params,
-                        "metadata": {
-                            "iuu_vessel_count": iuu,
-                            "adversary_level": adv,
-                            "sar_revisit_interval": sar,
+                    runs_to_execute.append(
+                        {
+                            "name": run_name,
+                            "epochs": epochs,
+                            "seed": seed,
+                            "iuu_vessels": iuu,
+                            "sar_revisit": sar,
+                            "adv_params": adv_params,
+                            "metadata": {
+                                "iuu_vessel_count": iuu,
+                                "adversary_level": adv,
+                                "sar_revisit_interval": sar,
+                            },
                         }
-                    })
+                    )
 
     print(f"[*] Results will be saved to: {output_dir}")
     print(f"[*] Generated {len(runs_to_execute)} total run configurations.")
@@ -169,7 +173,7 @@ def main() -> int:
     print("=" * 60)
 
     results_key = {
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "is_smoke_test": args.smoke_test,
         "output_directory": str(output_dir),
         "runs": {},
@@ -191,7 +195,8 @@ def main() -> int:
                     run["iuu_vessels"],
                     run["sar_revisit"],
                     run["adv_params"],
-                ): run for run in runs_to_execute
+                ): run
+                for run in runs_to_execute
             }
 
             for future in as_completed(futures):
@@ -201,7 +206,7 @@ def main() -> int:
                     res = future.result()
                     # Split full results from high-level key summary
                     full_res = res.copy()
-                    
+
                     # Store high-level summary in key.json
                     results_key["runs"][name] = {
                         "status": res["status"],
@@ -214,13 +219,13 @@ def main() -> int:
                                 "patrol_cost": b_data["patrol_cost"],
                             }
                             for b_name, b_data in res["baselines"].items()
-                        }
+                        },
                     }
-                    
+
                     # Store full details in results.json
                     all_results[name] = full_res
                     logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
-                    
+
                 except Exception as e:
                     print(f"[-] Run '{name}' raised an unhandled exception: {e}")
                     results_key["runs"][name] = {
@@ -240,7 +245,7 @@ def main() -> int:
                     run["adv_params"],
                 )
                 full_res = res.copy()
-                
+
                 results_key["runs"][name] = {
                     "status": res["status"],
                     "elapsed_seconds": res["elapsed_seconds"],
@@ -252,9 +257,9 @@ def main() -> int:
                             "patrol_cost": b_data["patrol_cost"],
                         }
                         for b_name, b_data in res["baselines"].items()
-                    }
+                    },
                 }
-                
+
                 all_results[name] = full_res
                 logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
                 print(f"[+] Completed: {name}")
@@ -283,7 +288,7 @@ def main() -> int:
     log_file_path = output_dir / "all_runs.log"
     with open(log_file_path, "w") as f:
         f.write("=== Parameter Scan Execution Log ===\n")
-        f.write(f"Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n")
+        f.write(f"Timestamp: {datetime.datetime.now(datetime.UTC).isoformat()}\n")
         f.write(f"Total Runs: {len(runs_to_execute)}\n")
         f.write(f"Total Elapsed Time: {total_elapsed:.1f}s\n")
         f.write("=" * 60 + "\n\n")
@@ -292,7 +297,9 @@ def main() -> int:
 
     # Print summary table
     print("\n=== Coral Key Baselines Parameter Scan Summary ===")
-    print(f"{'Run Name':<45} | {'Status':<10} | {'Time (s)':<8} | {'A3 Det Rate':<12} | {'A3 FA Rate':<12}")
+    print(
+        f"{'Run Name':<45} | {'Status':<10} | {'Time (s)':<8} | {'A3 Det Rate':<12} | {'A3 FA Rate':<12}"
+    )
     print("-" * 98)
     for name, run_res in results_key["runs"].items():
         if run_res.get("status") == "success":
