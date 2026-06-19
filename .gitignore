@@ -36,3 +36,4 @@ Thumbs.db
 !configs/*.json
 telemetry_buffer/
 results/
+*.zip
