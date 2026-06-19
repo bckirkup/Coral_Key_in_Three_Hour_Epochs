@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 from tattletots.interface.domain_adapter import DomainAdapter
+from tattletots.models.location import EventLocation
 from tattletots.models.stream import Stream
 from tattletots.models.user import User
 
@@ -270,6 +271,29 @@ class ReefWatchAdapter(DomainAdapter):
     def get_ground_truth(self, time_step: int) -> bool:
         """Return whether IUU activity is happening at this time step."""
         return self._iuu_oracle.is_iuu_active(self._fleet.vessels)
+
+    def get_active_locations(self, time_step: int) -> list[EventLocation]:
+        """Return zones where IUU vessels are currently active."""
+        events = self._iuu_oracle.get_active_iuu_events(self._fleet.vessels)
+        locations: list[EventLocation] = []
+        for e in events:
+            zx = e["zone_x"]
+            zy = e["zone_y"]
+            locations.append((int(str(zx)), int(str(zy))))
+        return locations
+
+    def infer_report_location(
+        self,
+        stream_data: list[NDArray[np.float64]],
+        stream_labels: list[str],
+    ) -> EventLocation:
+        """Infer report location from AIS stream peak zone."""
+        for data, label in zip(stream_data, stream_labels, strict=False):
+            if label == "ais_positions" and data.size > 0:
+                peak_idx = int(np.argmax(np.abs(data)))
+                grid_ny = self._grid.ny
+                return (peak_idx // grid_ny, peak_idx % grid_ny)
+        return (0, 0)
 
     def score_relevance(self, signal_vector: NDArray[np.float64], user: User) -> float:
         """Score how relevant a signal is to a specific user."""

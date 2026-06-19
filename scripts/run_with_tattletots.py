@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     for epoch in range(epochs):
         # Advance domain
         adapter.step(epoch)
-        world.set_ground_truth(adapter.get_ground_truth(epoch))
+        world.set_event_state(adapter.get_active_locations(epoch))
 
         # Advance agent ecology
         record = world.step()
