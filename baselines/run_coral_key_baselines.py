@@ -1,36 +1,42 @@
 #!/usr/bin/env python3
 """Parameter Scan Runner for Coral Key Baselines (Without TattleTots).
 
-This script runs a parameter scan for the Coral Key (ReefWatch) simulation
-using ONLY the baseline detection architectures (A0, A1, A2, A3).
-It sweeps across factors like IUU vessel count, adversary levels, and SAR
-revisit intervals, running each in triplicate for 800 epochs.
+Run from the workspace root (parent of all repos):
 
-All results are consolidated into exactly three output files to prevent clutter.
-
-Usage:
-    # Run a fast smoke test to verify everything works:
-    python run_coral_key_baselines.py --smoke-test
-
-    # Run the full parameter scan:
-    python run_coral_key_baselines.py
+    python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
+    python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --workers 8
 """
+
+from __future__ import annotations
 
 import argparse
 import datetime
 import json
+import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-# Import Coral Key modules
 from coral_key.adapter import ReefWatchAdapter
 from coral_key.baselines.architectures import run_baseline_comparison
 from coral_key.config import ScenarioConfig
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+for _parent in [_SCRIPT_DIR, *_SCRIPT_DIR.parents]:
+    _large_experiments = _parent / "TattleTots" / "Large Experiments"
+    if (_large_experiments / "baseline_parallel.py").is_file():
+        sys.path.insert(0, str(_large_experiments))
+        break
+else:
+    sys.exit(
+        "[-] Error: Could not find TattleTots/Large Experiments/baseline_parallel.py.\n"
+        "    Ensure all repos are cloned as siblings under a common workspace root."
+    )
+
+from baseline_parallel import resolve_worker_count, run_process_pool
 
 
 def run_single_simulation(
@@ -44,7 +50,6 @@ def run_single_simulation(
     """Runs a single Coral Key simulation and evaluates all 4 baseline architectures."""
     start_time = time.time()
 
-    # 1. Build ScenarioConfig
     config = ScenarioConfig()
     config.total_epochs = epochs
     config.seed = seed
@@ -55,26 +60,19 @@ def run_single_simulation(
     config.fleet.underreport_fraction = adv_params["underreport_fraction"]
     config.adversary.platform_interference_rate = adv_params["platform_interference_rate"]
 
-    # 2. Run simulation
     adapter = ReefWatchAdapter(config=config)
     for epoch in range(epochs):
         adapter.step(epoch)
 
-    # 3. Compute general cumulative metrics
     biomass = adapter.fish_stock.get_total_biomass()
     bmsy = np.array([sp.b_msy for sp in adapter.fish_stock.species])
     cumulative = adapter.metrics_collector.compute_cumulative(biomass, bmsy)
 
-    # 4. Evaluate baseline architectures (A0, A1, A2, A3)
     epoch_dicts = [m.model_dump() for m in adapter.metrics_collector.epoch_history]
     baselines = run_baseline_comparison(epoch_dicts)
 
     elapsed_time = time.time() - start_time
-
-    # 5. Format results
-    baseline_results = {}
-    for b in baselines:
-        baseline_results[b.architecture] = b.model_dump()
+    baseline_results = {b.architecture: b.model_dump() for b in baselines}
 
     return {
         "status": "success",
@@ -96,29 +94,20 @@ def main() -> int:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("coral_key_baselines_config.json"),
+        default=_SCRIPT_DIR / "coral_key_baselines_config.json",
         help="Path to parameter scan config JSON file",
     )
+    parser.add_argument("--smoke-test", action="store_true", help="Run a fast smoke test")
+    parser.add_argument("--parallel", action="store_true", default=True)
+    parser.add_argument("--no-parallel", action="store_false", dest="parallel")
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Run a fast smoke test of the parameter scan",
-    )
-    parser.add_argument(
-        "--parallel",
-        action="store_true",
-        default=True,
-        help="Run simulations in parallel (default: True)",
-    )
-    parser.add_argument(
-        "--no-parallel",
-        action="store_false",
-        dest="parallel",
-        help="Run simulations sequentially",
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes (default: min(CPU count, job count))",
     )
     args = parser.parse_args()
 
-    # 1. Load config
     if not args.config.exists():
         print(f"[-] Error: Config file not found at {args.config}")
         return 1
@@ -126,7 +115,6 @@ def main() -> int:
     with open(args.config) as f:
         config_data = json.load(f)
 
-    # 2. Determine output directory and steps
     output_dir_name = (
         "coral_key_baselines_smoke_results"
         if args.smoke_test
@@ -143,8 +131,7 @@ def main() -> int:
     adv_levels = ["medium"] if args.smoke_test else factors.get("adversary_level", ["medium"])
     sar_levels = [8] if args.smoke_test else factors.get("sar_revisit_interval", [8])
 
-    # 3. Build runs list
-    runs_to_execute = []
+    runs_to_execute: list[dict[str, Any]] = []
     for iuu in iuu_levels:
         for adv in adv_levels:
             for sar in sar_levels:
@@ -167,12 +154,22 @@ def main() -> int:
                         }
                     )
 
+    n_jobs = len(runs_to_execute)
+    worker_count = resolve_worker_count(args.workers, n_jobs)
+
     print(f"[*] Results will be saved to: {output_dir}")
-    print(f"[*] Generated {len(runs_to_execute)} total run configurations.")
-    print(f"[*] Execution mode: {'PARALLEL' if args.parallel else 'SEQUENTIAL'}")
+    print(f"[*] Generated {n_jobs} total run configurations.")
+    if args.parallel:
+        print(
+            f"[*] Execution mode: PARALLEL (ProcessPoolExecutor, "
+            f"{worker_count} worker process{'es' if worker_count != 1 else ''}, "
+            f"PID {os.getpid()} parent)"
+        )
+    else:
+        print(f"[*] Execution mode: SEQUENTIAL (single process, PID {os.getpid()})")
     print("=" * 60)
 
-    results_key = {
+    results_key: dict[str, Any] = {
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "is_smoke_test": args.smoke_test,
         "output_directory": str(output_dir),
@@ -180,101 +177,65 @@ def main() -> int:
     }
 
     start_time = time.time()
-    all_results = {}
-    logs = []
+    all_results: dict[str, Any] = {}
+    logs: list[str] = []
 
-    # 4. Execute runs
+    def _store_success(run: dict[str, Any], res: dict[str, Any]) -> None:
+        name = run["name"]
+        results_key["runs"][name] = {
+            "status": res["status"],
+            "elapsed_seconds": res["elapsed_seconds"],
+            "metadata": run["metadata"],
+            "baselines_summary": {
+                b_name: {
+                    "detection_rate": b_data["detection_rate"],
+                    "false_alarm_rate": b_data["false_alarm_rate"],
+                    "patrol_cost": b_data["patrol_cost"],
+                }
+                for b_name, b_data in res["baselines"].items()
+            },
+        }
+        all_results[name] = res.copy()
+        logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
+
+    def _store_failure(run: dict[str, Any], exc: Exception) -> None:
+        results_key["runs"][run["name"]] = {"status": "failed", "error": str(exc)}
+
+    job_args = [
+        (
+            run["name"],
+            run["epochs"],
+            run["seed"],
+            run["iuu_vessels"],
+            run["sar_revisit"],
+            run["adv_params"],
+        )
+        for run in runs_to_execute
+    ]
+
     if args.parallel:
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(
-                    run_single_simulation,
-                    run["name"],
-                    run["epochs"],
-                    run["seed"],
-                    run["iuu_vessels"],
-                    run["sar_revisit"],
-                    run["adv_params"],
-                ): run
-                for run in runs_to_execute
-            }
-
-            for future in as_completed(futures):
-                run = futures[future]
-                name = run["name"]
-                try:
-                    res = future.result()
-                    # Split full results from high-level key summary
-                    full_res = res.copy()
-
-                    # Store high-level summary in key.json
-                    results_key["runs"][name] = {
-                        "status": res["status"],
-                        "elapsed_seconds": res["elapsed_seconds"],
-                        "metadata": run["metadata"],
-                        "baselines_summary": {
-                            b_name: {
-                                "detection_rate": b_data["detection_rate"],
-                                "false_alarm_rate": b_data["false_alarm_rate"],
-                                "patrol_cost": b_data["patrol_cost"],
-                            }
-                            for b_name, b_data in res["baselines"].items()
-                        },
-                    }
-
-                    # Store full details in results.json
-                    all_results[name] = full_res
-                    logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
-
-                except Exception as e:
-                    print(f"[-] Run '{name}' raised an unhandled exception: {e}")
-                    results_key["runs"][name] = {
-                        "status": "failed",
-                        "error": str(e),
-                    }
+        run_process_pool(
+            run_single_simulation,
+            job_args,
+            runs_to_execute,
+            max_workers=worker_count,
+            on_success=_store_success,
+            on_failure=_store_failure,
+        )
     else:
-        for run in runs_to_execute:
+        for run, kwargs in zip(runs_to_execute, job_args, strict=True):
             name = run["name"]
             try:
-                res = run_single_simulation(
-                    name,
-                    run["epochs"],
-                    run["seed"],
-                    run["iuu_vessels"],
-                    run["sar_revisit"],
-                    run["adv_params"],
-                )
-                full_res = res.copy()
-
-                results_key["runs"][name] = {
-                    "status": res["status"],
-                    "elapsed_seconds": res["elapsed_seconds"],
-                    "metadata": run["metadata"],
-                    "baselines_summary": {
-                        b_name: {
-                            "detection_rate": b_data["detection_rate"],
-                            "false_alarm_rate": b_data["false_alarm_rate"],
-                            "patrol_cost": b_data["patrol_cost"],
-                        }
-                        for b_name, b_data in res["baselines"].items()
-                    },
-                }
-
-                all_results[name] = full_res
-                logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
+                _store_success(run, run_single_simulation(*kwargs))
                 print(f"[+] Completed: {name}")
             except Exception as e:
+                _store_failure(run, e)
                 print(f"[-] Run '{name}' failed: {e}")
-                results_key["runs"][name] = {
-                    "status": "failed",
-                    "error": str(e),
-                }
 
     total_elapsed = time.time() - start_time
     print("=" * 60)
     print(f"[+] All runs finished in {total_elapsed:.1f}s.")
 
-    # 5. Save the consolidated files
     key_file_path = output_dir / "key.json"
     with open(key_file_path, "w") as f:
         json.dump(results_key, f, indent=2)
@@ -295,10 +256,10 @@ def main() -> int:
         f.write("\n".join(logs))
     print(f"[+] Consolidated logs written to: {log_file_path}")
 
-    # Print summary table
     print("\n=== Coral Key Baselines Parameter Scan Summary ===")
     print(
-        f"{'Run Name':<45} | {'Status':<10} | {'Time (s)':<8} | {'A3 Det Rate':<12} | {'A3 FA Rate':<12}"
+        f"{'Run Name':<45} | {'Status':<10} | {'Time (s)':<8} | "
+        f"{'A3 Det Rate':<12} | {'A3 FA Rate':<12}"
     )
     print("-" * 98)
     for name, run_res in results_key["runs"].items():

@@ -30,6 +30,7 @@ htmlcov/
 Thumbs.db
 
 # Output
+*.zip
 *.json
 !scenario.json
 !configs/*.json

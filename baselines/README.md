@@ -1,30 +1,32 @@
 # Baseline Comparisons (Without TattleTots)
 
-This directory contains scripts and results for running the Coral Key (ReefWatch)
-simulation using **only** the conventional baseline detection architectures (A0-A3),
-without the TattleTots agent ecology.
+Parameter scans using **only** conventional baseline architectures (A0–A3), no TattleTots agent ecology.
 
-## Contents
+## Run from workspace root
+
+```bash
+cd D:\TotsFiles
+python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
+python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --workers 8
+```
+
+Parallel mode uses **ProcessPoolExecutor** (separate Python worker processes).
+
+## Files
 
 | File | Purpose |
 |------|---------|
-| `run_coral_key_baselines.py` | Parameter scan runner sweeping IUU vessel count, adversary levels, and SAR revisit intervals |
-| `coral_key_baselines_config.json` | Scan configuration (factors, seeds, epochs) |
-| `coral_key_baselines_results.zip` | Pre-computed results from a full parameter scan |
+| `run_coral_key_baselines.py` | Parameter scan runner |
+| `coral_key_baselines_config.json` | Factor levels, seeds, epochs |
+| `coral_key_baselines_results.zip` | Pre-computed results (optional) |
 
-## Usage
+## Shared utilities
 
-These scripts are designed to run from a workspace root that has all domain repos
-installed. They depend on `baseline_parallel` (a shared utility in the TattleTots
-`Large Experiments/` directory).
+Multiprocessing helpers live in `TattleTots/Large Experiments/baseline_parallel.py`.
+
+## Prerequisites
 
 ```bash
-# From the workspace root (parent of all repos):
-python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
+pip install -e TattleTots[dev]
+pip install -e Coral_Key_in_Three_Hour_Epochs[dev]
 ```
-
-## Relationship to TattleTots
-
-These baselines serve as the **control group** for evaluating TattleTots agent
-ecology performance. Compare results here against the integrated runs produced by
-`scripts/run_with_tattletots.py`.
