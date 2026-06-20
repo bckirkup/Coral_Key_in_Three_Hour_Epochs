@@ -410,7 +410,9 @@ class ReefWatchAdapter(DomainAdapter):
             if vessel.vessel_type != VesselType.IUU or vessel.at_port:
                 continue
             if vessel.position.zone_x == zone_x and vessel.position.zone_y == zone_y:
-                catch = float(vessel.catch_this_epoch.sum()) if vessel.catch_this_epoch.size else 0.0
+                catch = (
+                    float(vessel.catch_this_epoch.sum()) if vessel.catch_this_epoch.size else 0.0
+                )
                 severity = max(severity, 1.0 + catch)
         return severity
 

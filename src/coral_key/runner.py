@@ -41,7 +41,9 @@ class CoralDomainHooks:
                     raw[key] = cli_overrides[key]
 
         domain_cfg = dict(raw.get("domain", {}))
-        steps = int(domain_cfg.pop("total_epochs", domain_cfg.pop("steps", _DEFAULT_DOMAIN["total_epochs"])))
+        steps = int(
+            domain_cfg.pop("total_epochs", domain_cfg.pop("steps", _DEFAULT_DOMAIN["total_epochs"]))
+        )
         return RunContext(
             steps=steps,
             seed=int(domain_cfg.get("seed", 42)),
@@ -66,7 +68,9 @@ class CoralDomainHooks:
     def on_step(self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any]) -> None:
         return
 
-    def should_stop(self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any]) -> bool:
+    def should_stop(
+        self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any]
+    ) -> bool:
         return bool(layer_events.get("stop"))
 
     def print_step(
@@ -113,10 +117,14 @@ def run_coral_simulation(run: RunContext) -> SimulationResult:
     return result
 
 
-def run_coral_batch_entry(name: str, run_config: dict[str, Any], output_dir: Path, verbose: bool) -> dict[str, Any]:
+def run_coral_batch_entry(
+    name: str, run_config: dict[str, Any], output_dir: Path, verbose: bool
+) -> dict[str, Any]:
     layer_name = str(run_config.pop("_layer", "domain_only"))
     simulation_config = dict(run_config.pop("simulation", {}))
-    steps = int(run_config.pop("total_epochs", run_config.pop("steps", _DEFAULT_DOMAIN["total_epochs"])))
+    steps = int(
+        run_config.pop("total_epochs", run_config.pop("steps", _DEFAULT_DOMAIN["total_epochs"]))
+    )
     run = RunContext(
         steps=steps,
         seed=int(run_config.get("seed", 42)),

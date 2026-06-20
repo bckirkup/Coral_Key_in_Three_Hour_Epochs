@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from coral_key.runner import CoralDomainHooks, run_coral_batch, run_coral_simulation
