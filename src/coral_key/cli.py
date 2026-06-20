@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from coral_key.runner import CoralDomainHooks, run_coral_batch, run_coral_simulation
 
@@ -48,7 +49,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     hooks = CoralDomainHooks()
-    overrides: dict = {"verbose": args.verbose, "layer": args.layer}
+    overrides: dict[str, Any] = {"verbose": args.verbose, "layer": args.layer}
     if args.epochs:
         overrides.setdefault("domain", {})["total_epochs"] = args.epochs
     if args.seed is not None:
