@@ -57,7 +57,7 @@ The adapter implements `tattletots.interface.domain_adapter.DomainAdapter`:
 - `get_ground_truth(time_step)` → whether IUU is currently active
 - `get_active_locations(time_step)` → returns `(zone_x, zone_y)` for each active IUU vessel
 - `infer_report_location(stream_data, stream_labels)` → finds peak in AIS stream → maps to grid zone
-- `score_relevance(signal, user)` → domain-specific relevance scoring
+- `score_relevance(signal, user)` → band-aligned role relevance via `tattletots.engine.relevance`
 - `compute_costs(...)` → patrol, boarding, and damage costs
 - `get_responder_user_id()` → user authorized for COP dispatch
 - `dispatch_and_judge_responses(targets, time_step)` → boarding/interdiction outcomes

@@ -34,7 +34,7 @@ pytest
 ## Key Files
 | File | Purpose |
 |------|---------|
-| `src/coral_key/adapter.py` | Main DomainAdapter + COP dispatch hooks |
+| `src/coral_key/adapter.py` | Main DomainAdapter + COP dispatch hooks (`score_relevance` → band alignment) |
 | `src/coral_key/runner.py` | domain-runner hooks (`CoralDomainHooks`, `run_coral_simulation`) |
 | `src/coral_key/config.py` | All scenario configuration (Pydantic) |
 | `src/coral_key/ocean/fish_stock.py` | Schaefer logistic production model |

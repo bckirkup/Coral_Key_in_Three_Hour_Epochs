@@ -301,8 +301,9 @@ class ReefWatchAdapter(DomainAdapter):
         return (0, 0)
 
     def score_relevance(self, signal_vector: NDArray[np.float64], user: User) -> float:
-        """Score how relevant a signal is to a specific user."""
-        return user.compute_relevance(signal_vector)
+        from tattletots.engine.relevance import score_report_relevance
+
+        return score_report_relevance(signal_vector, user)
 
     def compute_costs(
         self,

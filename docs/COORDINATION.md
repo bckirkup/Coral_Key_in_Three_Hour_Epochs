@@ -46,6 +46,8 @@ coral-key batch --config configs/batch_example.json
 
 ### Integrated (domain + TattleTots agent ecology + COP dispatch)
 
+COP fusion uses `adapter.score_relevance()` with band-aligned role weighting (see TattleTots `engine/relevance.py`). Requires a current TattleTots install.
+
 ```bash
 coral-key sim --layer tattletots --config configs/tattletots_integration.json --output integrated_results.json --verbose
 
