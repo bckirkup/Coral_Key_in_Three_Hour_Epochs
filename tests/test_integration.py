@@ -131,3 +131,19 @@ class TestTattleTotsIntegration:
         scores = [adapter.score_relevance(signal, u) for u in users]
         # At least two users should differ in score
         assert len(set(f"{s:.4f}" for s in scores)) > 1
+
+    def test_runner_tattletots_layer(self) -> None:
+        """Full loop via domain-runner + TattleTots layer (COP dispatch included)."""
+        from coral_key.runner import CoralDomainHooks, run_coral_simulation
+
+        hooks = CoralDomainHooks()
+        run = hooks.load_run_context(
+            cli_overrides={
+                "domain": {"total_epochs": 8, "grid_size": 8},
+                "layer": "tattletots",
+                "simulation": {"initial_population": 8, "max_steps": 8, "seed": 42},
+            }
+        )
+        result = run_coral_simulation(run)
+        assert result.layer == "tattletots"
+        assert result.steps_completed == 8

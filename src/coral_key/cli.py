@@ -4,111 +4,63 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
-import numpy as np
-
-from coral_key.adapter import ReefWatchAdapter
-from coral_key.config import ScenarioConfig
+from coral_key.runner import CoralDomainHooks, run_coral_batch, run_coral_simulation
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run a ReefWatch simulation."""
     parser = argparse.ArgumentParser(
         description="Coral Key in Three Hour Epochs — ReefWatch fishery simulation"
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to JSON config file",
-    )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=None,
-        help="Number of epochs to simulate (overrides config)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Random seed (overrides config)",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print epoch-by-epoch summary",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        help="Path to write JSON results",
-    )
-    args = parser.parse_args(argv)
+    subparsers = parser.add_subparsers(dest="command", required=False)
 
-    # Load or create config
-    if args.config:
-        adapter = ReefWatchAdapter.from_config_file(args.config)
-        config = adapter._config
-    else:
-        config = ScenarioConfig()
-        if args.epochs:
-            config.total_epochs = args.epochs
-        if args.seed is not None:
-            config.seed = args.seed
-        adapter = ReefWatchAdapter(config=config)
+    sim_parser = subparsers.add_parser("sim", help="Run a single simulation")
+    sim_parser.add_argument("--config", type=str)
+    sim_parser.add_argument("--epochs", type=int)
+    sim_parser.add_argument("--seed", type=int)
+    sim_parser.add_argument("--layer", default="domain_only", choices=["domain_only", "tattletots"])
+    sim_parser.add_argument("--verbose", action="store_true")
+    sim_parser.add_argument("--output", type=str)
 
-    total_epochs = args.epochs or config.total_epochs
+    batch_parser = subparsers.add_parser("batch", help="Run batch simulations")
+    batch_parser.add_argument("--config", type=str, required=True)
+    batch_parser.add_argument("--output-dir", type=Path)
+    batch_parser.add_argument("--parallel", action="store_true")
+    batch_parser.add_argument("--workers", type=int)
+    batch_parser.add_argument("--verbose", action="store_true")
 
-    print("=== Coral Key: ReefWatch Simulation ===")
-    print(f"Epochs: {total_epochs} ({total_epochs * config.epoch_hours:.0f} hours)")
-    print(f"Grid: {config.ocean.n_zones_x}x{config.ocean.n_zones_y}")
-    print(f"Species: {config.fish.n_species}")
-    print(
-        f"Fleet: {config.fleet.n_legal_vessels}L / {config.fleet.n_gaming_vessels}G / {config.fleet.n_iuu_vessels}I"
-    )
-    print()
+    effective = argv if argv is not None else []
+    if effective and effective[0] not in ("sim", "batch", "-h", "--help"):
+        effective = ["sim", *effective]
+    elif not effective:
+        effective = ["sim"]
 
-    # Run simulation
-    for epoch in range(total_epochs):
-        adapter.step(epoch)
+    args = parser.parse_args(effective)
 
-        if args.verbose and epoch % 50 == 0:
-            biomass = adapter.fish_stock.get_total_biomass()
-            history = adapter.metrics_collector.epoch_history
-            latest = history[-1] if history else None
-            iuu_count = latest.iuu_vessels_active if latest else 0
-            print(
-                f"  Epoch {epoch:4d} | "
-                f"Biomass: {biomass.sum():.0f} | "
-                f"IUU active: {iuu_count} | "
-                f"Dark vessels: {latest.dark_vessels_detected if latest else 0}"
-            )
+    if args.command == "batch":
+        run_coral_batch(
+            Path(args.config),
+            output_dir=args.output_dir,
+            parallel=args.parallel,
+            workers=args.workers,
+            verbose=args.verbose,
+        )
+        return
 
-    # Final metrics
-    biomass = adapter.fish_stock.get_total_biomass()
-    bmsy = np.array([sp.b_msy for sp in adapter.fish_stock.species])
-    cumulative = adapter.metrics_collector.compute_cumulative(biomass, bmsy)
-
-    print("\n=== Final Metrics ===")
-    print(f"Biomass/BMSY ratio: {cumulative.biomass_relative_to_bmsy:.2f}")
-    print(f"Stock assessment error: {cumulative.stock_assessment_error:.3f}")
-    print(f"Catch underreporting detection: {cumulative.catch_underreporting_detection:.3f}")
-    print(f"Patrol cost: {cumulative.patrol_cost:.0f}")
-    print(f"Economic loss to IUU: {cumulative.economic_loss_to_iuu:.1f}")
-
-    # Write output
+    hooks = CoralDomainHooks()
+    overrides: dict = {"verbose": args.verbose, "layer": args.layer}
+    if args.epochs:
+        overrides.setdefault("domain", {})["total_epochs"] = args.epochs
+    if args.seed is not None:
+        overrides.setdefault("domain", {})["seed"] = args.seed
     if args.output:
-        results = {
-            "config": adapter.to_config(),
-            "metrics": cumulative.model_dump(),
-            "final_biomass": biomass.tolist(),
-            "epochs_run": total_epochs,
-        }
-        with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults written to {args.output}")
+        overrides["output"] = args.output
+
+    run = hooks.load_run_context(config_path=args.config, cli_overrides=overrides)
+    result = run_coral_simulation(run)
+    if args.output and not Path(args.output).exists():
+        hooks.write_output(result, args.output)
 
 
 if __name__ == "__main__":

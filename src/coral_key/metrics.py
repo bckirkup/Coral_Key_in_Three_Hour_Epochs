@@ -32,6 +32,9 @@ class CumulativeMetrics(BaseModel):
     stock_assessment_error: float = Field(default=0.0, ge=0.0)
     biomass_relative_to_bmsy: float = Field(default=1.0, ge=0.0)
     economic_loss_to_iuu: float = Field(default=0.0, ge=0.0)
+    total_responses_judged_necessary: int = Field(default=0, ge=0)
+    total_responses_judged_unnecessary: int = Field(default=0, ge=0)
+    unnecessary_boarding_rate: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class MetricsCollector:
@@ -45,6 +48,9 @@ class MetricsCollector:
         self._total_escalations: int = 0
         self._correct_escalations: int = 0
         self._false_escalations: int = 0
+        self._responses_judged_necessary: int = 0
+        self._responses_judged_unnecessary: int = 0
+        self._responses_dispatched: int = 0
         self._total_actual_catch = np.zeros(n_species)
         self._total_reported_catch = np.zeros(n_species)
         self._biomass_estimates: list[np.ndarray] = []
@@ -73,6 +79,18 @@ class MetricsCollector:
         else:
             self._false_escalations += 1
 
+    def record_response_outcomes(
+        self,
+        *,
+        dispatched: int,
+        judged_necessary: int,
+        judged_unnecessary: int,
+    ) -> None:
+        """Record post-dispatch patrol judgments."""
+        self._responses_dispatched += dispatched
+        self._responses_judged_necessary += judged_necessary
+        self._responses_judged_unnecessary += judged_unnecessary
+
     def record_catch(self, actual: np.ndarray, reported: np.ndarray) -> None:
         """Record actual vs reported catch."""
         self._total_actual_catch += actual[: self._n_species]
@@ -96,6 +114,12 @@ class MetricsCollector:
         false_boarding_rate = 0.0
         if self._total_escalations > 0:
             false_boarding_rate = self._false_escalations / self._total_escalations
+
+        unnecessary_boarding_rate = 0.0
+        if self._responses_dispatched > 0:
+            unnecessary_boarding_rate = (
+                self._responses_judged_unnecessary / self._responses_dispatched
+            )
 
         catch_detection = 0.0
         actual_sum = self._total_actual_catch.sum()
@@ -127,6 +151,9 @@ class MetricsCollector:
         return CumulativeMetrics(
             iuu_detection_rate=iuu_detection_rate,
             false_boarding_rate=false_boarding_rate,
+            unnecessary_boarding_rate=unnecessary_boarding_rate,
+            total_responses_judged_necessary=self._responses_judged_necessary,
+            total_responses_judged_unnecessary=self._responses_judged_unnecessary,
             patrol_cost=float(self._total_escalations) * 10.0,
             catch_underreporting_detection=catch_detection,
             stock_assessment_error=stock_error,

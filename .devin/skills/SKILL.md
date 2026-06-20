@@ -7,7 +7,8 @@ description: Development workflow for the Coral Key ReefWatch fishery simulation
 
 ## Quick Setup
 ```bash
-cd /home/ubuntu/repos/Coral_Key_in_Three_Hour_Epochs
+pip install -e domain-runner[dev]
+pip install -e TattleTots[dev]   # only for --layer tattletots
 pip install -e ".[dev]"
 pre-commit install
 ```
@@ -38,14 +39,13 @@ mypy src/
 
 ## Running a Simulation
 ```bash
-# Quick run with verbose output
+coral-key sim --layer domain_only --epochs 100 --verbose
+coral-key sim --layer tattletots --config configs/tattletots_integration.json
+coral-key batch --config configs/batch_example.json
+
+# Legacy
 coral-key --epochs 100 --verbose
-
-# With custom config
 coral-key --config scenario.json --output results.json
-
-# Short test
-coral-key --epochs 50 --seed 123 --verbose
 ```
 
 ## Architecture Overview
@@ -59,8 +59,10 @@ The adapter implements `tattletots.interface.domain_adapter.DomainAdapter`:
 - `infer_report_location(stream_data, stream_labels)` → finds peak in AIS stream → maps to grid zone
 - `score_relevance(signal, user)` → domain-specific relevance scoring
 - `compute_costs(...)` → patrol, boarding, and damage costs
+- `get_responder_user_id()` → user authorized for COP dispatch
+- `dispatch_and_judge_responses(targets, time_step)` → boarding/interdiction outcomes
 
-**Note:** The integration loop uses `world.set_event_state(adapter.get_active_locations(epoch))` (not `set_ground_truth`). The engine verifies report correctness per-location.
+**Note:** The integration loop uses `world.set_event_state(adapter.get_active_locations(epoch))` (not `set_ground_truth`). Agents must not read `User.trust`.
 
 ### Baselines
 
@@ -72,9 +74,7 @@ Standalone baseline comparison files live in `baselines/`:
 ## Integrated Mode (TattleTots Agent Ecology)
 
 ```bash
-python scripts/run_with_tattletots.py \
-    --config configs/tattletots_integration.json \
-    --output results.json --verbose
+coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
 ```
 
 Output conforms to `tattletots.output_schema.SimulationOutput` (unified JSON).

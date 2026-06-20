@@ -7,6 +7,8 @@ monitoring systems in a mixed ecological-adversarial environment.
 
 ## Setup
 ```bash
+pip install -e domain-runner[dev]
+pip install -e TattleTots[dev]   # only for --layer tattletots
 pip install -e ".[dev]"
 pre-commit install
 ```
@@ -32,7 +34,8 @@ pytest
 ## Key Files
 | File | Purpose |
 |------|---------|
-| `src/coral_key/adapter.py` | Main DomainAdapter implementation |
+| `src/coral_key/adapter.py` | Main DomainAdapter + COP dispatch hooks |
+| `src/coral_key/runner.py` | domain-runner hooks (`CoralDomainHooks`, `run_coral_simulation`) |
 | `src/coral_key/config.py` | All scenario configuration (Pydantic) |
 | `src/coral_key/ocean/fish_stock.py` | Schaefer logistic production model |
 | `src/coral_key/fleet/behavior.py` | Fleet lifecycle and fishing decisions |

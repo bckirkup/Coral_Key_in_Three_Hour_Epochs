@@ -16,22 +16,23 @@ The simulation advances in **3-hour epochs**, modeling:
 ## Installation
 
 ```bash
-# Clone and install
 git clone https://github.com/bckirkup/Coral_Key_in_Three_Hour_Epochs.git
 cd Coral_Key_in_Three_Hour_Epochs
+pip install -e domain-runner[dev]
 pip install -e ".[dev]"
 pre-commit install
 ```
 
-Requires [TattleTots](https://github.com/bckirkup/TattleTots) as a dependency.
+Requires [domain-runner](https://github.com/bckirkup/domain-runner). TattleTots is only needed for `--layer tattletots`.
 
 ## Quick Start
 
 ```bash
-# Run a standalone simulation
-coral-key --epochs 200 --verbose
+coral-key sim --layer domain_only --epochs 200 --verbose
+coral-key batch --config configs/batch_example.json
 
-# With custom config
+# Legacy
+coral-key --epochs 200 --verbose
 coral-key --config scenario.json --output results.json
 ```
 
@@ -110,7 +111,12 @@ src/coral_key/
 
 ## Integrated Mode (with TattleTots Agent Ecology)
 
-Run the full integration — domain generates sensor streams while TattleTots agents compress, escalate, evolve, and compete:
+```bash
+pip install -e TattleTots[dev]
+coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
+```
+
+Legacy:
 
 ```bash
 python scripts/run_with_tattletots.py \

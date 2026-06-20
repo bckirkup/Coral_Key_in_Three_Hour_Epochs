@@ -6,6 +6,7 @@ This document explains how Coral Key integrates with TattleTots and the sibling 
 
 | Repository | Role | Package |
 |------------|------|---------|
+| **domain-runner** | Layer-agnostic single/batch runners | *(library)* |
 | **TattleTots** | Agent ecology engine (domain-agnostic) | `tattletots` |
 | **Coral_Key_in_Three_Hour_Epochs** (this repo) | ReefWatch fishery domain adapter | `coral-key` |
 | **Xylella_SPQR** | GrainGuard agriculture domain adapter | `grain-guard` |
@@ -29,37 +30,31 @@ class ReefWatchAdapter(DomainAdapter):
 ## Installation for Coordinated Use
 
 ```bash
-# Install TattleTots first (engine dependency)
-pip install -e /path/to/TattleTots[dev]
-
-# Install this repo
+pip install -e /path/to/domain-runner[dev]
+pip install -e /path/to/TattleTots[dev]   # only for --layer tattletots
 pip install -e ".[dev]"
-
-# Optionally install sibling domains for cross-comparison
-pip install -e /path/to/Xylella_SPQR[dev]
-pip install -e /path/to/Scrapiron_and_the_Bear[dev]
 ```
 
 ## Running Modes
 
-### Standalone (domain-only, no agent ecology)
+### Domain only (no agent ecology)
 
 ```bash
-coral-key --epochs 200 --verbose --output standalone_results.json
+coral-key sim --layer domain_only --epochs 200 --verbose --output standalone_results.json
+coral-key batch --config configs/batch_example.json
 ```
 
-Exercises the fishery simulation (stock dynamics, fleet behavior, sensors) without TattleTots agents.
-
-### Integrated (domain + TattleTots agent ecology)
+### Integrated (domain + TattleTots agent ecology + COP dispatch)
 
 ```bash
+coral-key sim --layer tattletots --config configs/tattletots_integration.json --output integrated_results.json --verbose
+
+# Legacy
 python scripts/run_with_tattletots.py \
     --config configs/tattletots_integration.json \
     --output integrated_results.json \
     --verbose
 ```
-
-Runs the full loop: domain generates sensor streams → Tot agents compress/escalate → trust/evolution dynamics → cost accounting.
 
 ## Configuration
 

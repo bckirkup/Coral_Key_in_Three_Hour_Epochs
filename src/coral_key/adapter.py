@@ -7,8 +7,12 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+from tattletots.engine.response_judgment import judge_necessity
 from tattletots.interface.domain_adapter import DomainAdapter
+from tattletots.models.dispatch_target import DispatchTarget
 from tattletots.models.location import EventLocation
+from tattletots.models.report import Report
+from tattletots.models.response_outcome import ResponseOutcome
 from tattletots.models.stream import Stream
 from tattletots.models.user import User
 
@@ -16,6 +20,7 @@ from coral_key.adversary.interference import PlatformInterference
 from coral_key.adversary.iuu import IUUDetectionOracle
 from coral_key.config import ScenarioConfig
 from coral_key.fleet.behavior import FleetManager
+from coral_key.fleet.vessel import VesselType
 from coral_key.metrics import EpochMetrics, MetricsCollector
 from coral_key.ocean.fish_stock import FishStock
 from coral_key.ocean.grid import OceanGrid
@@ -321,6 +326,92 @@ class ReefWatchAdapter(DomainAdapter):
             + n_false_alarms * false_boarding_cost,
             "damage_cost": n_missed * missed_iuu_cost,
         }
+
+    def dispatch_patrol(self, zone_x: int, zone_y: int) -> None:
+        """Board IUU vessels in a zone and return them to port."""
+        ports = self._grid.get_port_zones()
+        if not ports:
+            return
+        port = ports[0]
+        for vessel in self._fleet.vessels:
+            if vessel.vessel_type != VesselType.IUU or vessel.at_port:
+                continue
+            if vessel.position.zone_x == zone_x and vessel.position.zone_y == zone_y:
+                vessel.catch_this_epoch = np.zeros_like(vessel.catch_this_epoch)
+                vessel.return_to_port(port.x, port.y)
+                return
+
+    def get_responder_user_id(self) -> str:
+        """Patrol Commander authorizes IUU patrol dispatch."""
+        for user in self._users:
+            if user.name == "Patrol Commander":
+                return user.id
+        return self._users[0].id
+
+    def dispatch_and_judge_responses(
+        self,
+        targets: list[DispatchTarget],
+        time_step: int,
+    ) -> list[ResponseOutcome]:
+        """Patrol COP-selected zones and judge responder necessity."""
+        outcomes: list[ResponseOutcome] = []
+        responder_id = self.get_responder_user_id()
+
+        for target in targets:
+            zone_x, zone_y = target.location
+            before = self._iuu_severity(zone_x, zone_y)
+            self.dispatch_patrol(zone_x, zone_y)
+            after = self._iuu_severity(zone_x, zone_y)
+            dispatched = True
+
+            linked_reports = target.reports or [
+                Report(
+                    agent_id="",
+                    target_user_id=responder_id,
+                    time_step=time_step,
+                    signal_vector=np.array([]),
+                    confidence=0.0,
+                    anomaly_score=0.0,
+                    location=target.location,
+                    verified=True,
+                )
+            ]
+            primary = next((r for r in linked_reports if r.agent_id), linked_reports[0])
+            if primary.correct:
+                self._metrics.record_escalation(correct=True)
+            elif primary.verified and primary.correct is False:
+                self._metrics.record_escalation(correct=False)
+
+            problem, mitigated, necessary = judge_necessity(before, after)
+            for report in linked_reports:
+                outcome = ResponseOutcome(
+                    agent_id=report.agent_id,
+                    responder_user_id=responder_id,
+                    time_step=time_step,
+                    location=target.location,
+                    response_type="patrol",
+                    dispatched=dispatched,
+                    problem_severity_before=before,
+                    problem_severity_after=after,
+                    problem_present=problem,
+                    mitigated=mitigated,
+                    response_necessary=necessary,
+                )
+                report.response_outcome = outcome
+                outcomes.append(outcome)
+
+        return outcomes
+
+    def _iuu_severity(self, zone_x: int, zone_y: int) -> float:
+        """IUU activity severity in a zone (0 if none)."""
+        severity = 0.0
+        for vessel in self._fleet.vessels:
+            if vessel.vessel_type != VesselType.IUU or vessel.at_port:
+                continue
+            if vessel.position.zone_x == zone_x and vessel.position.zone_y == zone_y:
+                catch = float(vessel.catch_this_epoch.sum()) if vessel.catch_this_epoch.size else 0.0
+                severity = max(severity, 1.0 + catch)
+        return severity
 
     @property
     def metrics_collector(self) -> MetricsCollector:

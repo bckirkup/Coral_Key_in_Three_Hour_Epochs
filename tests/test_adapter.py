@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import numpy as np
+from tattletots.models.dispatch_target import DispatchTarget
+from tattletots.models.report import Report
 
 from coral_key.adapter import ReefWatchAdapter
 from coral_key.config import ScenarioConfig
+from coral_key.fleet.vessel import VesselType
 
 
 class TestReefWatchAdapter:
@@ -112,3 +115,77 @@ class TestReefWatchAdapter:
         adapter2 = ReefWatchAdapter.from_config(config_dict)
         assert adapter2._config.total_epochs == 100
         assert adapter2._config.seed == 99
+
+    def test_dispatch_and_judge_necessary_patrol(self) -> None:
+        config = ScenarioConfig(
+            ocean=ScenarioConfig.model_fields["ocean"]
+            .default_factory()
+            .model_copy(  # type: ignore[union-attr]
+                update={"n_zones_x": 4, "n_zones_y": 4}
+            ),
+            fleet=ScenarioConfig.model_fields["fleet"]
+            .default_factory()
+            .model_copy(  # type: ignore[union-attr]
+                update={"n_legal_vessels": 1, "n_gaming_vessels": 0, "n_iuu_vessels": 1}
+            ),
+            seed=7,
+        )
+        adapter = ReefWatchAdapter(config=config)
+        iuu = next(v for v in adapter._fleet.vessels if v.vessel_type == VesselType.IUU)
+        iuu.depart_port(2, 2)
+        users = adapter.get_users()
+        report = Report(
+            agent_id="agent-1",
+            target_user_id=users[0].id,
+            time_step=0,
+            signal_vector=np.ones(10),
+            confidence=0.9,
+            anomaly_score=2.0,
+            location=(2, 2),
+            verified=True,
+            correct=True,
+        )
+        outcomes = adapter.dispatch_and_judge_responses(
+            [
+                DispatchTarget(
+                    location=(2, 2),
+                    reports=[report],
+                    responder_user_id=adapter.get_responder_user_id(),
+                    cop_threat_level=2.0,
+                )
+            ],
+            0,
+        )
+        assert len(outcomes) == 1
+        assert outcomes[0].dispatched
+        assert outcomes[0].response_necessary
+        assert iuu.at_port
+
+    def test_dispatch_and_judge_unnecessary_empty_zone(self) -> None:
+        adapter = ReefWatchAdapter()
+        users = adapter.get_users()
+        report = Report(
+            agent_id="agent-1",
+            target_user_id=users[0].id,
+            time_step=0,
+            signal_vector=np.ones(10),
+            confidence=0.9,
+            anomaly_score=2.0,
+            location=(1, 1),
+            verified=True,
+            correct=True,
+        )
+        outcomes = adapter.dispatch_and_judge_responses(
+            [
+                DispatchTarget(
+                    location=(1, 1),
+                    reports=[report],
+                    responder_user_id=adapter.get_responder_user_id(),
+                    cop_threat_level=2.0,
+                )
+            ],
+            0,
+        )
+        assert len(outcomes) == 1
+        assert outcomes[0].dispatched
+        assert not outcomes[0].response_necessary
