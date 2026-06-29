@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from coral_key.ocean.grid import OceanGrid, ZoneType
 
@@ -38,10 +39,10 @@ class TestOceanGrid:
         port_zone = Zone(x=2, y=2, zone_type=ZoneType.PORT)
         shelf_zone = Zone(x=3, y=3, zone_type=ZoneType.SHELF)
 
-        assert open_zone.is_fishing_allowed is True
-        assert mpa_zone.is_fishing_allowed is False
-        assert port_zone.is_fishing_allowed is False
-        assert shelf_zone.is_fishing_allowed is True
+        assert open_zone.is_fishing_allowed
+        assert not mpa_zone.is_fishing_allowed
+        assert not port_zone.is_fishing_allowed
+        assert shelf_zone.is_fishing_allowed
 
     def test_distance_to_port_computed(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.1, n_ports=1, rng=rng)
@@ -49,7 +50,7 @@ class TestOceanGrid:
         assert len(ports) >= 1
         # Port itself has distance 0
         port = ports[0]
-        assert grid.get_zone(port.x, port.y).distance_to_port == 0.0
+        assert grid.get_zone(port.x, port.y).distance_to_port == pytest.approx(0.0)
 
     def test_get_mpa_zones(self, small_grid: OceanGrid) -> None:
         mpa = small_grid.get_mpa_zones()

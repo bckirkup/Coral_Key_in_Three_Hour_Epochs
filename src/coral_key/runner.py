@@ -18,6 +18,17 @@ from coral_key.adapter import ReefWatchAdapter
 from coral_key.config import ScenarioConfig
 
 _DEFAULT_DOMAIN: dict[str, Any] = {"total_epochs": 200, "seed": 42}
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _safe_path_under_base(raw: str | Path, base: Path | None = None) -> Path:
+    """Resolve a user-supplied path and ensure it stays within the allowed base."""
+    base_dir = (base or _REPO_ROOT).resolve()
+    candidate = Path(raw)
+    resolved = (candidate if candidate.is_absolute() else base_dir / candidate).resolve()
+    if not resolved.is_relative_to(base_dir):
+        raise ValueError(f"Path escapes allowed directory: {raw}")
+    return resolved
 
 
 class CoralDomainHooks:
@@ -32,7 +43,7 @@ class CoralDomainHooks:
     ) -> RunContext:
         raw: dict[str, Any] = {"domain": dict(_DEFAULT_DOMAIN), "layer": "domain_only"}
         if config_path:
-            raw = deep_merge(raw, load_json(config_path))
+            raw = deep_merge(raw, load_json(str(_safe_path_under_base(config_path))))
         if cli_overrides:
             if "domain" in cli_overrides:
                 raw["domain"] = deep_merge(raw.get("domain", {}), cli_overrides["domain"])
@@ -51,7 +62,7 @@ class CoralDomainHooks:
             layer=str(raw.get("layer", "domain_only")),
             simulation_config=dict(raw.get("simulation", {})),
             verbose=bool(raw.get("verbose", False)),
-            output_path=Path(raw["output"]) if raw.get("output") else None,
+            output_path=(_safe_path_under_base(raw["output"]) if raw.get("output") else None),
         )
 
     def build_adapter(self, domain_config: dict[str, Any]) -> ReefWatchAdapter:
@@ -65,16 +76,23 @@ class CoralDomainHooks:
         print(f"  Grid: {cfg.ocean.n_zones_x}x{cfg.ocean.n_zones_y}")
         print()
 
-    def on_step(self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any]) -> None:
+    def on_step(
+        self, _adapter: ReefWatchAdapter, _step: int, _layer_events: dict[str, Any]
+    ) -> None:
         return
 
     def should_stop(
-        self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any]
+        self, _adapter: ReefWatchAdapter, _step: int, layer_events: dict[str, Any]
     ) -> bool:
         return bool(layer_events.get("stop"))
 
     def print_step(
-        self, adapter: ReefWatchAdapter, step: int, layer_events: dict[str, Any], *, verbose: bool
+        self,
+        adapter: ReefWatchAdapter,
+        step: int,
+        _layer_events: dict[str, Any],
+        *,
+        verbose: bool,
     ) -> None:
         if verbose and step % 50 == 0:
             biomass = adapter.fish_stock.get_total_biomass()
@@ -90,13 +108,14 @@ class CoralDomainHooks:
         return summary
 
     def write_output(self, result: SimulationResult, path: str) -> None:
+        safe_path = _safe_path_under_base(path)
         if "simulation_output" in result.layer_metrics:
             output = result.layer_metrics["simulation_output"]
             output.run_summary.wall_time_seconds = result.wall_time_seconds
             output.domain_metrics = result.domain_metrics
-            output.write_json(path)
+            output.write_json(str(safe_path))
             return
-        with open(path, "w", encoding="utf-8") as f:
+        with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(result.to_dict(), f, indent=2)
 
 
@@ -148,8 +167,10 @@ def run_coral_batch_entry(
 
 
 def run_coral_batch(batch_config_path: Path, **kwargs: Any) -> dict[str, Any]:
-    batch = load_json(batch_config_path)
-    out = Path(kwargs.get("output_dir") or batch.get("output_directory", "batch_results"))
+    safe_batch_path = _safe_path_under_base(batch_config_path)
+    batch = load_json(str(safe_batch_path))
+    raw_out = kwargs.get("output_dir") or batch.get("output_directory", "batch_results")
+    out = _safe_path_under_base(raw_out)
     return cast(
         dict[str, Any],
         execute_batch(

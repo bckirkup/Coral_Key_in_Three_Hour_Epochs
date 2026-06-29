@@ -13,7 +13,7 @@ class TestPlatformInterference:
         pi = PlatformInterference(interference_rate=0.0, rng=rng)
         data = np.ones(10)
         result, interfered = pi.apply_interference(data)
-        assert interfered is False
+        assert not interfered
         np.testing.assert_array_equal(result, data)
 
     def test_always_interferes_at_rate_one(self) -> None:
@@ -21,7 +21,7 @@ class TestPlatformInterference:
         pi = PlatformInterference(interference_rate=1.0, rng=rng)
         data = np.ones(10)
         result, interfered = pi.apply_interference(data)
-        assert interfered is True
+        assert interfered
         # At least some values should be different
         assert not np.array_equal(result, data)
 
@@ -33,5 +33,5 @@ class TestPlatformInterference:
 
         # Should have some NaN or non-zero values
         has_nan = np.any(np.isnan(result))
-        has_nonzero = np.any(result != 0.0)
+        has_nonzero = not np.allclose(result, 0.0)
         assert has_nan or has_nonzero

@@ -20,6 +20,7 @@ class FleetManager:
         n_species: int,
         catch_efficiency: float = 0.1,
         carrying_capacity: float = 1000.0,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._grid = grid
@@ -28,7 +29,7 @@ class FleetManager:
         self._n_species = n_species
         self._catch_efficiency = catch_efficiency
         self._carrying_capacity = carrying_capacity
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
         self.vessels: list[Vessel] = []
         self._initialize_fleet()
 
@@ -63,7 +64,7 @@ class FleetManager:
 
     def step(
         self,
-        epoch: int,
+        _epoch: int,
         fish_distribution: np.ndarray,
         enforcement_pressure: float,
     ) -> np.ndarray:

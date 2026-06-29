@@ -19,12 +19,13 @@ class EMStream:
         n_species: int,
         review_rate: float = 0.3,
         n_monitored_vessels: int = 10,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._n_species = n_species
         self._review_rate = review_rate
         self._n_monitored = n_monitored_vessels
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
 
     @property
     def dimensionality(self) -> int:

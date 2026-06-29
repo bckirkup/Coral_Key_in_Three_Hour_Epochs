@@ -20,12 +20,13 @@ class SARStream:
         grid: OceanGrid,
         revisit_interval: int = 8,
         detection_probability: float = 0.85,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._grid = grid
         self._revisit_interval = revisit_interval
         self._detection_prob = detection_probability
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
         self._n_zones = grid.nx * grid.ny
 
     @property

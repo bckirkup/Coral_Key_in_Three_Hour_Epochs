@@ -138,7 +138,7 @@ class TestSmokeScenarios:
         signal = np.ones(total_dim)
         scores = [adapter.score_relevance(signal, u) for u in users]
         # Different users should have different relevance scores
-        assert len(set(f"{s:.4f}" for s in scores)) > 1
+        assert len({f"{s:.4f}" for s in scores}) > 1
 
     def test_iuu_detection_rate_nonzero(self) -> None:
         """IUU detection rate should be > 0 when dark vessels are produced."""

@@ -19,12 +19,13 @@ class CatchReportStream:
         n_species: int,
         underreport_fraction_iuu: float = 0.15,
         underreport_fraction_gaming: float = 0.1,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._n_species = n_species
         self._underreport_iuu = underreport_fraction_iuu
         self._underreport_gaming = underreport_fraction_gaming
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
 
     @property
     def dimensionality(self) -> int:

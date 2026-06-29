@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from coral_key.metrics import CumulativeMetrics, EpochMetrics, MetricsCollector
 
@@ -47,7 +48,7 @@ class TestMetricsCollector:
 
         result = collector.compute_cumulative(np.array([500.0]), np.array([500.0]))
         # 3 IUU-active epochs, 2 detected
-        assert result.iuu_detection_rate == 2.0 / 3.0
+        assert result.iuu_detection_rate == pytest.approx(2.0 / 3.0)
 
     def test_biomass_estimate_tracking(self) -> None:
         """Stock assessment error uses recorded estimates vs actuals."""
@@ -85,4 +86,4 @@ class TestMetricsCollector:
         biomass = np.array([500.0])
         bmsy = np.array([500.0])
         result = collector.compute_cumulative(biomass, bmsy)
-        assert result.false_boarding_rate == 1.0 / 3.0
+        assert result.false_boarding_rate == pytest.approx(1.0 / 3.0)

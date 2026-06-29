@@ -25,6 +25,7 @@ from coral_key.baselines.architectures import run_baseline_comparison
 from coral_key.config import ScenarioConfig
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parent
 for _parent in [_SCRIPT_DIR, *_SCRIPT_DIR.parents]:
     _large_experiments = _parent / "TattleTots" / "Large Experiments"
     if (_large_experiments / "baseline_parallel.py").is_file():
@@ -37,6 +38,16 @@ else:
     )
 
 from baseline_parallel import resolve_worker_count, run_process_pool
+
+
+def _safe_path_under_base(raw: str | Path, base: Path | None = None) -> Path:
+    """Resolve a user-supplied path and ensure it stays within the allowed base."""
+    base_dir = (base or _REPO_ROOT).resolve()
+    candidate = Path(raw)
+    resolved = (candidate if candidate.is_absolute() else base_dir / candidate).resolve()
+    if not resolved.is_relative_to(base_dir):
+        raise ValueError(f"Path escapes allowed directory: {raw}")
+    return resolved
 
 
 def run_single_simulation(
@@ -89,47 +100,37 @@ def run_single_simulation(
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Parameter Scan Runner for Coral Key Baselines")
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=_SCRIPT_DIR / "coral_key_baselines_config.json",
-        help="Path to parameter scan config JSON file",
-    )
-    parser.add_argument("--smoke-test", action="store_true", help="Run a fast smoke test")
-    parser.add_argument("--parallel", action="store_true", default=True)
-    parser.add_argument("--no-parallel", action="store_false", dest="parallel")
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=None,
-        help="Number of parallel worker processes (default: min(CPU count, job count))",
-    )
-    args = parser.parse_args()
+def _load_scan_config(config_path: Path) -> dict[str, Any]:
+    safe_path = _safe_path_under_base(config_path)
+    if not safe_path.exists():
+        raise FileNotFoundError(f"Config file not found at {safe_path}")
+    with open(safe_path, encoding="utf-8") as f:
+        return json.load(f)
 
-    if not args.config.exists():
-        print(f"[-] Error: Config file not found at {args.config}")
-        return 1
 
-    with open(args.config) as f:
-        config_data = json.load(f)
-
+def _resolve_output_dir(config_data: dict[str, Any], smoke_test: bool) -> Path:
     output_dir_name = (
         "coral_key_baselines_smoke_results"
-        if args.smoke_test
+        if smoke_test
         else config_data.get("output_directory", "coral_key_baselines_results")
     )
-    output_dir = Path(output_dir_name).resolve()
+    output_dir = _safe_path_under_base(output_dir_name)
     output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
 
-    epochs = 5 if args.smoke_test else config_data.get("epochs", 800)
-    seeds = [42] if args.smoke_test else config_data.get("seeds", [42, 43, 44])
+
+def _build_run_list(
+    config_data: dict[str, Any],
+    *,
+    smoke_test: bool,
+) -> tuple[list[dict[str, Any]], int, list[int], dict[str, Any]]:
+    epochs = 5 if smoke_test else config_data.get("epochs", 800)
+    seeds = [42] if smoke_test else config_data.get("seeds", [42, 43, 44])
     factors = config_data.get("factors", {})
 
-    iuu_levels = [3] if args.smoke_test else factors.get("iuu_vessel_count", [3])
-    adv_levels = ["medium"] if args.smoke_test else factors.get("adversary_level", ["medium"])
-    sar_levels = [8] if args.smoke_test else factors.get("sar_revisit_interval", [8])
+    iuu_levels = [3] if smoke_test else factors.get("iuu_vessel_count", [3])
+    adv_levels = ["medium"] if smoke_test else factors.get("adversary_level", ["medium"])
+    sar_levels = [8] if smoke_test else factors.get("sar_revisit_interval", [8])
 
     runs_to_execute: list[dict[str, Any]] = []
     for iuu in iuu_levels:
@@ -153,30 +154,27 @@ def main() -> int:
                             },
                         }
                     )
+    return runs_to_execute, epochs, seeds, factors
 
-    n_jobs = len(runs_to_execute)
-    worker_count = resolve_worker_count(args.workers, n_jobs)
 
-    print(f"[*] Results will be saved to: {output_dir}")
-    print(f"[*] Generated {n_jobs} total run configurations.")
-    if args.parallel:
-        print(
-            f"[*] Execution mode: PARALLEL (ProcessPoolExecutor, "
-            f"{worker_count} worker process{'es' if worker_count != 1 else ''}, "
-            f"PID {os.getpid()} parent)"
-        )
-    else:
-        print(f"[*] Execution mode: SEQUENTIAL (single process, PID {os.getpid()})")
-    print("=" * 60)
-
-    results_key: dict[str, Any] = {
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "is_smoke_test": args.smoke_test,
-        "output_directory": str(output_dir),
-        "runs": {},
+def _baseline_summary(res: dict[str, Any]) -> dict[str, dict[str, float]]:
+    return {
+        b_name: {
+            "detection_rate": b_data["detection_rate"],
+            "false_alarm_rate": b_data["false_alarm_rate"],
+            "patrol_cost": b_data["patrol_cost"],
+        }
+        for b_name, b_data in res["baselines"].items()
     }
 
-    start_time = time.time()
+
+def _execute_runs(
+    runs_to_execute: list[dict[str, Any]],
+    *,
+    parallel: bool,
+    worker_count: int,
+) -> tuple[dict[str, Any], dict[str, Any], list[str], float]:
+    results_key: dict[str, Any] = {"runs": {}}
     all_results: dict[str, Any] = {}
     logs: list[str] = []
 
@@ -186,14 +184,7 @@ def main() -> int:
             "status": res["status"],
             "elapsed_seconds": res["elapsed_seconds"],
             "metadata": run["metadata"],
-            "baselines_summary": {
-                b_name: {
-                    "detection_rate": b_data["detection_rate"],
-                    "false_alarm_rate": b_data["false_alarm_rate"],
-                    "patrol_cost": b_data["patrol_cost"],
-                }
-                for b_name, b_data in res["baselines"].items()
-            },
+            "baselines_summary": _baseline_summary(res),
         }
         all_results[name] = res.copy()
         logs.append(f"[+] Completed: {name} in {res['elapsed_seconds']:.2f}s")
@@ -213,7 +204,8 @@ def main() -> int:
         for run in runs_to_execute
     ]
 
-    if args.parallel:
+    start_time = time.time()
+    if parallel:
         run_process_pool(
             run_single_simulation,
             job_args,
@@ -232,22 +224,29 @@ def main() -> int:
                 _store_failure(run, e)
                 print(f"[-] Run '{name}' failed: {e}")
 
-    total_elapsed = time.time() - start_time
-    print("=" * 60)
-    print(f"[+] All runs finished in {total_elapsed:.1f}s.")
+    return results_key, all_results, logs, time.time() - start_time
 
+
+def _write_output_files(
+    output_dir: Path,
+    results_key: dict[str, Any],
+    all_results: dict[str, Any],
+    logs: list[str],
+    runs_to_execute: list[dict[str, Any]],
+    total_elapsed: float,
+) -> None:
     key_file_path = output_dir / "key.json"
-    with open(key_file_path, "w") as f:
+    with open(key_file_path, "w", encoding="utf-8") as f:
         json.dump(results_key, f, indent=2)
     print(f"[+] Parameter scan summary key written to: {key_file_path}")
 
     results_file_path = output_dir / "results.json"
-    with open(results_file_path, "w") as f:
+    with open(results_file_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2)
     print(f"[+] Consolidated results written to: {results_file_path}")
 
     log_file_path = output_dir / "all_runs.log"
-    with open(log_file_path, "w") as f:
+    with open(log_file_path, "w", encoding="utf-8") as f:
         f.write("=== Parameter Scan Execution Log ===\n")
         f.write(f"Timestamp: {datetime.datetime.now(datetime.UTC).isoformat()}\n")
         f.write(f"Total Runs: {len(runs_to_execute)}\n")
@@ -256,6 +255,8 @@ def main() -> int:
         f.write("\n".join(logs))
     print(f"[+] Consolidated logs written to: {log_file_path}")
 
+
+def _print_run_summary(results_key: dict[str, Any]) -> None:
     print("\n=== Coral Key Baselines Parameter Scan Summary ===")
     print(
         f"{'Run Name':<45} | {'Status':<10} | {'Time (s)':<8} | "
@@ -276,6 +277,67 @@ def main() -> int:
             a3_fa = "N/A"
         print(f"{name:<45} | {status:<10} | {elapsed:<8} | {a3_det:<12} | {a3_fa:<12}")
     print("=" * 98)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Parameter Scan Runner for Coral Key Baselines")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=_SCRIPT_DIR / "coral_key_baselines_config.json",
+        help="Path to parameter scan config JSON file",
+    )
+    parser.add_argument("--smoke-test", action="store_true", help="Run a fast smoke test")
+    parser.add_argument("--parallel", action="store_true", default=True)
+    parser.add_argument("--no-parallel", action="store_false", dest="parallel")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes (default: min(CPU count, job count))",
+    )
+    args = parser.parse_args()
+
+    try:
+        config_data = _load_scan_config(args.config)
+    except FileNotFoundError as exc:
+        print(f"[-] Error: {exc}")
+        return 1
+
+    output_dir = _resolve_output_dir(config_data, args.smoke_test)
+    runs_to_execute, _epochs, _seeds, _factors = _build_run_list(
+        config_data, smoke_test=args.smoke_test
+    )
+
+    n_jobs = len(runs_to_execute)
+    worker_count = resolve_worker_count(args.workers, n_jobs)
+
+    print(f"[*] Results will be saved to: {output_dir}")
+    print(f"[*] Generated {n_jobs} total run configurations.")
+    if args.parallel:
+        print(
+            f"[*] Execution mode: PARALLEL (ProcessPoolExecutor, "
+            f"{worker_count} worker process{'es' if worker_count != 1 else ''}, "
+            f"PID {os.getpid()} parent)"
+        )
+    else:
+        print(f"[*] Execution mode: SEQUENTIAL (single process, PID {os.getpid()})")
+    print("=" * 60)
+
+    results_key, all_results, logs, total_elapsed = _execute_runs(
+        runs_to_execute,
+        parallel=args.parallel,
+        worker_count=worker_count,
+    )
+    results_key["timestamp"] = datetime.datetime.now(datetime.UTC).isoformat()
+    results_key["is_smoke_test"] = args.smoke_test
+    results_key["output_directory"] = str(output_dir)
+
+    print("=" * 60)
+    print(f"[+] All runs finished in {total_elapsed:.1f}s.")
+
+    _write_output_files(output_dir, results_key, all_results, logs, runs_to_execute, total_elapsed)
+    _print_run_summary(results_key)
 
     any_failed = any(r.get("status") == "failed" for r in results_key["runs"].values())
     return 1 if any_failed else 0

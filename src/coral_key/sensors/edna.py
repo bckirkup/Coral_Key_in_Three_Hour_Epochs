@@ -19,13 +19,14 @@ class EDNAStream:
         n_sample_zones: int = 4,
         sample_interval: int = 56,
         detection_sensitivity: float = 0.7,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._n_species = n_species
         self._n_sample_zones = n_sample_zones
         self._sample_interval = sample_interval
         self._sensitivity = detection_sensitivity
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
 
     @property
     def dimensionality(self) -> int:

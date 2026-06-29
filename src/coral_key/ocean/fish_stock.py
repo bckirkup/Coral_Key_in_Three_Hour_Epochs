@@ -51,9 +51,10 @@ class FishStock:
         carrying_capacity: float = 1000.0,
         intrinsic_growth_rate: float = 0.3,
         catchability: float = 0.001,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
         self._n_zones = n_zones
 
         species_names = ["grouper", "snapper", "lobster", "tuna", "mahi"]
