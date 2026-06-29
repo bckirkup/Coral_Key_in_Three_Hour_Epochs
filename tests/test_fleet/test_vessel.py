@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from coral_key.fleet.vessel import Vessel, VesselPosition, VesselType
 
@@ -10,19 +11,19 @@ from coral_key.fleet.vessel import Vessel, VesselPosition, VesselType
 class TestVessel:
     def test_default_vessel_at_port(self) -> None:
         vessel = Vessel(vessel_type=VesselType.LEGAL)
-        assert vessel.at_port is True
-        assert vessel.ais_enabled is True
+        assert vessel.at_port
+        assert vessel.ais_enabled
         assert vessel.trip_duration == 0
 
     def test_depart_and_return(self) -> None:
         vessel = Vessel(vessel_type=VesselType.LEGAL)
         vessel.depart_port(target_x=3, target_y=5)
-        assert vessel.at_port is False
+        assert not vessel.at_port
         assert vessel.position.zone_x == 3
         assert vessel.position.zone_y == 5
 
         vessel.return_to_port(port_x=0, port_y=0)
-        assert vessel.at_port is True
+        assert vessel.at_port
         assert vessel.trip_duration == 0
 
     def test_record_catch(self) -> None:
@@ -49,4 +50,4 @@ class TestVessel:
     def test_position_model(self) -> None:
         pos = VesselPosition(zone_x=5, zone_y=3, speed=8.5, heading=270.0)
         assert pos.zone_x == 5
-        assert pos.speed == 8.5
+        assert pos.speed == pytest.approx(8.5)

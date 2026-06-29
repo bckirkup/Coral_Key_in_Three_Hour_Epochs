@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from coral_key.baselines.architectures import (
     BaselineA0,
     BaselineA1,
@@ -16,9 +18,9 @@ class TestBaselineA0:
         """A0 needs >= 2 dark vessels (conservative threshold)."""
         a0 = BaselineA0(dark_vessel_threshold=2)
         # Single dark vessel — not enough for A0
-        assert a0.process_epoch(dark_vessels=1, iuu_active=True) is False
+        assert not a0.process_epoch(dark_vessels=1, iuu_active=True)
         # Two dark vessels — alert
-        assert a0.process_epoch(dark_vessels=2, iuu_active=True) is True
+        assert a0.process_epoch(dark_vessels=2, iuu_active=True)
 
     def test_detection_rate_reflects_conservatism(self) -> None:
         a0 = BaselineA0(dark_vessel_threshold=2)
@@ -29,7 +31,7 @@ class TestBaselineA0:
         a0.process_epoch(dark_vessels=3, iuu_active=True)
         a0.process_epoch(dark_vessels=0, iuu_active=True)
         result = a0.get_result()
-        assert result.detection_rate == 2.0 / 5.0
+        assert result.detection_rate == pytest.approx(2.0 / 5.0)
 
 
 class TestBaselineA1:
@@ -37,24 +39,24 @@ class TestBaselineA1:
         """A1 catches single dark vessel when SAR confirms."""
         a1 = BaselineA1()
         # Single dark, no SAR — no alert (unlike old A1)
-        assert a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=0) is False
+        assert not a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=0)
         # Single dark + SAR — alert
-        assert a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1) is True
+        assert a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
 
     def test_strong_ais_alone_triggers(self) -> None:
         """A1 still alerts on strong AIS signal (>= 2) without SAR."""
         a1 = BaselineA1()
-        assert a1.process_epoch(dark_vessels=2, iuu_active=True, sar_discrepancies=0) is True
+        assert a1.process_epoch(dark_vessels=2, iuu_active=True, sar_discrepancies=0)
 
     def test_beats_a0(self) -> None:
         """A1 should detect more than A0 when SAR provides confirmation."""
         a0 = BaselineA0()
         a1 = BaselineA1()
         # Epoch where only A1 detects (dark=1, sar=1)
-        a0.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
+        a0.process_epoch(dark_vessels=1, iuu_active=True)
         a1.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
-        assert a0.get_result().detection_rate == 0.0
-        assert a1.get_result().detection_rate == 1.0
+        assert a0.get_result().detection_rate == pytest.approx(0.0)
+        assert a1.get_result().detection_rate == pytest.approx(1.0)
 
 
 class TestBaselineA2:
@@ -65,13 +67,13 @@ class TestBaselineA2:
         alert = a2.process_epoch(
             dark_vessels=0, iuu_active=True, sar_discrepancies=0, catch_anomaly=0.1
         )
-        assert alert is True
+        assert alert
 
     def test_inherits_a1_detection(self) -> None:
         """A2 still catches everything A1 catches."""
         a2 = BaselineA2()
-        assert a2.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1) is True
-        assert a2.process_epoch(dark_vessels=2, iuu_active=True) is True
+        assert a2.process_epoch(dark_vessels=1, iuu_active=True, sar_discrepancies=1)
+        assert a2.process_epoch(dark_vessels=2, iuu_active=True)
 
 
 class TestBaselineA3:
@@ -79,9 +81,9 @@ class TestBaselineA3:
         """A3 fires after accumulating weak signals over window."""
         a3 = BaselineA3(window_size=4, alert_threshold=1.0)
         # Single weak signal — not enough
-        assert a3.process_epoch(dark_vessels=1, iuu_active=True) is False
+        assert not a3.process_epoch(dark_vessels=1, iuu_active=True)
         # Second weak signal — accumulates
-        assert a3.process_epoch(dark_vessels=1, iuu_active=True) is True
+        assert a3.process_epoch(dark_vessels=1, iuu_active=True)
 
     def test_catches_persistent_low_level_iuu(self) -> None:
         """A3 detects persistent catch anomaly that single-epoch detectors miss."""
@@ -92,14 +94,14 @@ class TestBaselineA3:
         a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.03)
         # Adding one dark vessel pushes accumulated score over threshold
         alert = a3.process_epoch(dark_vessels=1, iuu_active=True, catch_anomaly=0.03)
-        assert alert is True
+        assert alert
 
     def test_window_reset_after_alert(self) -> None:
         """Evidence window resets after alert to avoid double-counting."""
         a3 = BaselineA3(window_size=3, alert_threshold=1.0)
         a3.process_epoch(dark_vessels=2, iuu_active=True)  # should alert
         # Next epoch with weak signal shouldn't alert (window cleared)
-        assert a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.01) is False
+        assert not a3.process_epoch(dark_vessels=0, iuu_active=True, catch_anomaly=0.01)
 
 
 class TestRunBaselineComparison:

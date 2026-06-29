@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from coral_key.fleet.vessel import Vessel, VesselPosition, VesselType
 from coral_key.sensors.ais import AISStream
@@ -23,8 +24,8 @@ class TestAISStream:
         )
         obs = ais.observe([vessel], epoch=0)
         assert obs.shape == (5,)
-        assert obs[0] == 3.0 / 10.0  # normalized x
-        assert obs[1] == 5.0 / 10.0  # normalized y
+        assert obs[0] == pytest.approx(3.0 / 10.0)  # normalized x
+        assert obs[1] == pytest.approx(5.0 / 10.0)  # normalized y
         assert not np.any(np.isnan(obs))
 
     def test_observe_dark_vessel(self) -> None:
@@ -49,8 +50,8 @@ class TestAISStream:
         )
         obs = ais.observe([vessel], epoch=0)
         # Should show spoofed position, not actual
-        assert obs[0] == 1.0 / 10.0
-        assert obs[1] == 1.0 / 10.0
+        assert obs[0] == pytest.approx(1.0 / 10.0)
+        assert obs[1] == pytest.approx(1.0 / 10.0)
 
     def test_count_dark_vessels(self) -> None:
         ais = AISStream(n_vessels=3)

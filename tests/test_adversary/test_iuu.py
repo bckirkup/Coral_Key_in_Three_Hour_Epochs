@@ -23,7 +23,7 @@ class TestIUUDetectionOracle:
             ),
             Vessel(vessel_type=VesselType.LEGAL, at_port=True),
         ]
-        assert oracle.is_iuu_active(vessels) is True
+        assert oracle.is_iuu_active(vessels)
 
     def test_no_iuu_when_all_at_port(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.2, n_ports=1, rng=rng)
@@ -33,7 +33,7 @@ class TestIUUDetectionOracle:
             Vessel(vessel_type=VesselType.IUU, at_port=True),
             Vessel(vessel_type=VesselType.LEGAL, at_port=True),
         ]
-        assert oracle.is_iuu_active(vessels) is False
+        assert not oracle.is_iuu_active(vessels)
 
     def test_get_active_iuu_events(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.5, n_ports=1, rng=rng)
@@ -50,7 +50,7 @@ class TestIUUDetectionOracle:
         ]
         events = oracle.get_active_iuu_events(vessels)
         assert len(events) == 1
-        assert events[0]["ais_disabled"] is True
+        assert events[0]["ais_disabled"]
 
     def test_count_mpa_violations(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.5, n_ports=1, rng=rng)

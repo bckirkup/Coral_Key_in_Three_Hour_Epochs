@@ -130,7 +130,7 @@ class TestTattleTotsIntegration:
         signal = np.ones(total_dim)
         scores = [adapter.score_relevance(signal, u) for u in users]
         # At least two users should differ in score
-        assert len(set(f"{s:.4f}" for s in scores)) > 1
+        assert len({f"{s:.4f}" for s in scores}) > 1
 
     def test_runner_tattletots_layer(self) -> None:
         """Full loop via domain-runner + TattleTots layer (COP dispatch included)."""

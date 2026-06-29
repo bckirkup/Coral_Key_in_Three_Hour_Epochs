@@ -189,7 +189,7 @@ class ReefWatchAdapter(DomainAdapter):
             [sp.biomass * sp.spatial_distribution for sp in self._fish_stock.species]
         )
         catch = self._fleet.step(
-            epoch=time_step,
+            time_step,
             fish_distribution=fish_dist,
             enforcement_pressure=self._config.fleet.enforcement_pressure,
         )

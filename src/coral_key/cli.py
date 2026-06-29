@@ -6,7 +6,12 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from coral_key.runner import CoralDomainHooks, run_coral_batch, run_coral_simulation
+from coral_key.runner import (
+    CoralDomainHooks,
+    _safe_path_under_base,
+    run_coral_batch,
+    run_coral_simulation,
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -40,8 +45,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "batch":
         run_coral_batch(
-            Path(args.config),
-            output_dir=args.output_dir,
+            _safe_path_under_base(args.config),
+            output_dir=_safe_path_under_base(args.output_dir) if args.output_dir else None,
             parallel=args.parallel,
             workers=args.workers,
             verbose=args.verbose,
@@ -55,11 +60,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.seed is not None:
         overrides.setdefault("domain", {})["seed"] = args.seed
     if args.output:
-        overrides["output"] = args.output
+        overrides["output"] = str(_safe_path_under_base(args.output))
 
     run = hooks.load_run_context(config_path=args.config, cli_overrides=overrides)
     result = run_coral_simulation(run)
-    if args.output and not Path(args.output).exists():
+    if args.output and not _safe_path_under_base(args.output).exists():
         hooks.write_output(result, args.output)
 
 

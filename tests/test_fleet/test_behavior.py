@@ -38,7 +38,7 @@ class TestFleetManager:
             rng=rng,
         )
         fish_dist = np.ones((2, 16)) / 16.0
-        catch = fleet.step(epoch=0, fish_distribution=fish_dist, enforcement_pressure=0.3)
+        catch = fleet.step(0, fish_distribution=fish_dist, enforcement_pressure=0.3)
         assert catch.shape == (2,)
         assert np.all(catch >= 0.0)
 
@@ -55,14 +55,13 @@ class TestFleetManager:
 
         # Run enough epochs for IUU vessels to depart and fish in MPA
         for epoch in range(50):
-            fleet.step(epoch=epoch, fish_distribution=fish_dist, enforcement_pressure=0.1)
+            fleet.step(epoch, fish_distribution=fish_dist, enforcement_pressure=0.1)
 
         # Check at least some IUU vessels have disabled AIS
         iuu_vessels = [v for v in fleet.vessels if v.vessel_type == VesselType.IUU]
-        ais_disabled = [v for v in iuu_vessels if not v.ais_enabled]
-        # With 100% disable probability in MPA, any IUU in MPA should be dark
-        # (some may still be at port)
-        assert len(ais_disabled) >= 0  # Non-deterministic, but validates no crash
+        _ = [v for v in iuu_vessels if not v.ais_enabled]
+        # Non-deterministic, but validates no crash
+        assert len(iuu_vessels) > 0
 
     def test_reported_catches_underreported(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.2, n_ports=2, rng=rng)
@@ -81,10 +80,8 @@ class TestFleetManager:
         fish_dist = np.ones((2, 16)) / 16.0
 
         # Run simulation to accumulate catch
-        total_actual = np.zeros(2)
         for epoch in range(30):
-            catch = fleet.step(epoch=epoch, fish_distribution=fish_dist, enforcement_pressure=0.2)
-            total_actual += catch
+            fleet.step(epoch, fish_distribution=fish_dist, enforcement_pressure=0.2)
 
         reported = fleet.get_reported_catches()
         # Reported should generally be <= actual (underreporting)

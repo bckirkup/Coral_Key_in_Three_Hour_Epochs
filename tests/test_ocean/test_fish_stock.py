@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from coral_key.ocean.fish_stock import FishStock, SpeciesState
 
@@ -17,8 +18,8 @@ class TestSpeciesState:
             catchability=0.001,
             spatial_distribution=np.array([0.5, 0.5]),
         )
-        assert sp.msy == 0.3 * 1000.0 / 4.0  # 75.0
-        assert sp.b_msy == 500.0
+        assert sp.msy == pytest.approx(0.3 * 1000.0 / 4.0)  # 75.0
+        assert sp.b_msy == pytest.approx(500.0)
 
     def test_overfished_flag(self) -> None:
         sp = SpeciesState(
@@ -29,10 +30,10 @@ class TestSpeciesState:
             catchability=0.001,
             spatial_distribution=np.array([1.0]),
         )
-        assert sp.is_overfished is True
+        assert sp.is_overfished
 
         sp.biomass = 600.0
-        assert sp.is_overfished is False
+        assert not sp.is_overfished
 
 
 class TestFishStock:

@@ -32,13 +32,14 @@ class Oceanography:
         sst_base: float = 26.0,
         sst_amplitude: float = 3.0,
         chlorophyll_base: float = 0.5,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._grid = grid
         self._sst_base = sst_base
         self._sst_amplitude = sst_amplitude
         self._chlorophyll_base = chlorophyll_base
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
         self._n_zones = grid.nx * grid.ny
 
     def compute_state(self, epoch: int, epoch_hours: float = 3.0) -> OceanState:

@@ -14,7 +14,7 @@ from coral_key.fleet.vessel import VesselType
 class TestReefWatchAdapter:
     def test_construction(self) -> None:
         adapter = ReefWatchAdapter()
-        assert adapter is not None
+        assert adapter
 
     def test_get_streams(self) -> None:
         adapter = ReefWatchAdapter()

@@ -15,10 +15,11 @@ class PlatformInterference:
     def __init__(
         self,
         interference_rate: float = 0.05,
+        seed: int = 42,
         rng: np.random.Generator | None = None,
     ) -> None:
         self._rate = interference_rate
-        self._rng = rng or np.random.default_rng()
+        self._rng = rng if rng is not None else np.random.default_rng(seed)
 
     def apply_interference(self, sensor_data: np.ndarray) -> tuple[np.ndarray, bool]:
         """Potentially corrupt sensor data with interference.

@@ -101,9 +101,9 @@ class BaselineA0(_BaseTracker):
         dark_vessels: int,
         iuu_active: bool,
         *,
-        sar_discrepancies: int = 0,
-        catch_anomaly: float = 0.0,
-        ocean_anomaly: float = 0.0,
+        _sar_discrepancies: int = 0,
+        _catch_anomaly: float = 0.0,
+        _ocean_anomaly: float = 0.0,
     ) -> bool:
         """Alert only when dark vessel count is clearly anomalous (≥ threshold)."""
         self._track_iuu_state(iuu_active)
@@ -141,8 +141,8 @@ class BaselineA1(_BaseTracker):
         iuu_active: bool,
         *,
         sar_discrepancies: int = 0,
-        catch_anomaly: float = 0.0,
-        ocean_anomaly: float = 0.0,
+        _catch_anomaly: float = 0.0,
+        _ocean_anomaly: float = 0.0,
     ) -> bool:
         """Alert on strong AIS signal OR (weak AIS + SAR confirmation)."""
         self._track_iuu_state(iuu_active)
@@ -187,7 +187,7 @@ class BaselineA2(_BaseTracker):
         *,
         sar_discrepancies: int = 0,
         catch_anomaly: float = 0.0,
-        ocean_anomaly: float = 0.0,
+        _ocean_anomaly: float = 0.0,
     ) -> bool:
         """Alert on strong AIS OR (weak AIS + SAR) OR catch anomaly."""
         self._track_iuu_state(iuu_active)
@@ -301,13 +301,24 @@ def run_baseline_comparison(
         reported = float(str(m.get("total_catch_reported", 0.0)))
         catch_anomaly = (actual - reported) / actual if actual > 0 else 0.0
 
-        for baseline in (a0, a1, a2, a3):
-            baseline.process_epoch(
-                dark_vessels=dark,
-                iuu_active=iuu_active,
-                sar_discrepancies=sar_disc,
-                catch_anomaly=catch_anomaly,
-            )
+        a0.process_epoch(dark_vessels=dark, iuu_active=iuu_active)
+        a1.process_epoch(
+            dark_vessels=dark,
+            iuu_active=iuu_active,
+            sar_discrepancies=sar_disc,
+        )
+        a2.process_epoch(
+            dark_vessels=dark,
+            iuu_active=iuu_active,
+            sar_discrepancies=sar_disc,
+            catch_anomaly=catch_anomaly,
+        )
+        a3.process_epoch(
+            dark_vessels=dark,
+            iuu_active=iuu_active,
+            sar_discrepancies=sar_disc,
+            catch_anomaly=catch_anomaly,
+        )
 
     return [
         a0.get_result(patrol_cost_per_alert),
