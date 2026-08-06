@@ -1,0 +1,4 @@
+{
+  "name": "Coral Key (ReefWatch)",
+  "install": "sudo python3 -m pip install --break-system-packages -e \".[dev]\""
+}
