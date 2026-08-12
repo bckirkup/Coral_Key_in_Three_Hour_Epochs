@@ -147,3 +147,7 @@ class TestTattleTotsIntegration:
         result = run_coral_simulation(run)
         assert result.layer == "tattletots"
         assert result.steps_completed == 8
+        ecology = result.domain_metrics["ecology"]
+        assert ecology["initiation_is_degenerate"] is True
+        assert ecology["initiation_degeneracy_reasons"]
+        assert ecology["event_prevalence"] == 0.875
