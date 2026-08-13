@@ -31,10 +31,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -e domain-runner[dev]
-          pip install -e TattleTots[dev]
-          pip install -e ".[dev]"
+          # Pin third-party dependencies to verified versions and restrict pip to
+          # pre-built wheels so installation never builds sdists / runs setup scripts
+          # (SonarCloud githubactions:S8541 and githubactions:S8544).
+          pip install --only-binary=:all: \
+            "numpy==2.4.4" \
+            "scipy==1.17.1" \
+            "networkx==3.6.1" \
+            "pydantic==2.13.4" \
+            "pytest==9.1.1" \
+            "pytest-cov==7.1.0" \
+            "ruff==0.16.1" \
+            "mypy==2.3.0"
+          # First-party packages are installed editable with --no-deps so no
+          # unpinned dependencies are resolved from these source checkouts.
+          pip install --only-binary=:all: --no-deps -e domain-runner
+          pip install --only-binary=:all: --no-deps -e TattleTots
+          pip install --only-binary=:all: --no-deps -e .
 
       - name: Lint with ruff
         run: |
