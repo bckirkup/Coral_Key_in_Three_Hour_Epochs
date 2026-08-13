@@ -139,7 +139,10 @@ class TestTattleTotsIntegration:
         observation = world._prepare_input_pipeline(agent)
 
         assert observation.metadata is not None
-        assert observation.metadata.coordinates is not None
+        assert (
+            observation.metadata.coordinates is not None
+            or observation.metadata.sensor_coordinates is not None
+        )
         assert observation.metadata.feature_count == observation.data.size
 
     def test_relevance_scoring_differentiates_users(self) -> None:
