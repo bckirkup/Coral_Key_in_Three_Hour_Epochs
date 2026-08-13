@@ -108,6 +108,23 @@ class TestReefWatchAdapter:
         }
         assert all(location in declared for location in locations)
 
+    def test_location_frame_comes_from_grid_extent(self) -> None:
+        adapter = ReefWatchAdapter(
+            config=ScenarioConfig.model_validate({"ocean": {"n_zones_x": 4, "n_zones_y": 3}})
+        )
+
+        assert adapter.get_location_frame() == ((0, 0), (3, 2))
+        assert adapter.get_location_frame() == (
+            (
+                min(zone.x for zone in adapter.grid.zones),
+                min(zone.y for zone in adapter.grid.zones),
+            ),
+            (
+                max(zone.x for zone in adapter.grid.zones),
+                max(zone.y for zone in adapter.grid.zones),
+            ),
+        )
+
     def test_spoofed_ais_is_present_at_claimed_coordinate_but_dark_is_missing(self) -> None:
         adapter = ReefWatchAdapter()
         spoofed = Vessel(
