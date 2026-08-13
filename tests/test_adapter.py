@@ -67,6 +67,14 @@ class TestReefWatchAdapter:
             assert stream.metadata is not None
             assert stream.metadata.feature_count == stream.dimensionality
             assert stream.current_status.size == stream.dimensionality
+            coordinates = stream.metadata.coordinates or [None] * stream.dimensionality
+            identities = stream.metadata.identity or [None] * stream.dimensionality
+            for feature_status, coordinate, identity in zip(
+                stream.current_status, coordinates, identities, strict=True
+            ):
+                if feature_status == ObservationStatus.MISSING.value:
+                    assert coordinate is None
+                    assert identity is None
 
         sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
         assert sar.metadata is not None
@@ -119,9 +127,13 @@ class TestReefWatchAdapter:
 
         assert metadata.coordinates is not None
         assert metadata.coordinates[0] == (3.0, 2.0)
+        observation[1] = np.nan
+        metadata = adapter._ais_metadata([spoofed, dark], observation)
+        assert metadata.coordinates[1] is None
         assert all(coordinate is None for coordinate in metadata.coordinates[5:])
         status = adapter._observation_status(observation)
         assert status[0] == ObservationStatus.OBSERVED.value
+        assert status[1] == ObservationStatus.MISSING.value
         assert status[5] == ObservationStatus.MISSING.value
 
     def test_ground_truth_returns_bool(self) -> None:

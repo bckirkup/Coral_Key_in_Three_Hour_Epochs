@@ -204,11 +204,12 @@ class ReefWatchAdapter(DomainAdapter):
         footprint = (0.0, 0.0)
         for index, vessel in enumerate(vessels[: self._ais.n_vessels]):
             position = vessel.reported_position or vessel.position
-            available = index * self._ais.features_per_vessel < observation.size and not np.isnan(
-                observation[index * self._ais.features_per_vessel]
-            )
-            coordinate = (float(position.zone_x), float(position.zone_y)) if available else None
-            for _ in range(self._ais.features_per_vessel):
+            offset = index * self._ais.features_per_vessel
+            for feature_index in range(self._ais.features_per_vessel):
+                available = offset + feature_index < observation.size and not np.isnan(
+                    observation[offset + feature_index]
+                )
+                coordinate = (float(position.zone_x), float(position.zone_y)) if available else None
                 coordinates.append(coordinate)
                 identities.append(vessel.id if available else None)
         missing = self._ais.dimensionality - len(coordinates)
@@ -223,19 +224,24 @@ class ReefWatchAdapter(DomainAdapter):
         )
 
     def _vessel_metadata(
-        self, label: str, vessels: list[Vessel], dimensionality: int, stride: int
+        self,
+        label: str,
+        vessels: list[Vessel],
+        observation: np.ndarray,
+        stride: int,
     ) -> StreamMetadata:
-        """Declare per-vessel provenance for reviewed vessel observations."""
+        """Declare per-vessel provenance from the observation's own availability."""
         coordinates: list[tuple[float, ...] | None] = []
         identities: list[str | None] = []
+        dimensionality = observation.size
         for index in range(min(len(vessels), dimensionality // stride)):
             vessel = vessels[index]
             coordinate = (float(vessel.position.zone_x), float(vessel.position.zone_y))
-            reviewed = not vessel.at_port
-            value_coordinate = coordinate if reviewed else None
-            vessel_id = vessel.id if reviewed else None
-            coordinates.extend([value_coordinate] * stride)
-            identities.extend([vessel_id] * stride)
+            offset = index * stride
+            for feature_index in range(stride):
+                available = not np.isnan(observation[offset + feature_index])
+                coordinates.append(coordinate if available else None)
+                identities.append(vessel.id if available else None)
         missing = dimensionality - len(coordinates)
         coordinates.extend([None] * missing)
         identities.extend([None] * missing)
@@ -254,8 +260,8 @@ class ReefWatchAdapter(DomainAdapter):
             return self._initial_metadata(self._edna.label, self._edna.dimensionality)
         coordinates: list[tuple[float, ...] | None] = [
             (
-                float(int(zone) % self._grid.nx),
-                float(int(zone) // self._grid.nx),
+                float(self._grid.zones[int(zone)].x),
+                float(self._grid.zones[int(zone)].y),
             )
             for _ in range(self._config.fish.n_species)
             for zone in zones
@@ -281,6 +287,21 @@ class ReefWatchAdapter(DomainAdapter):
             ObservationStatus.MISSING.value,
             ObservationStatus.OBSERVED.value,
         )
+
+    @staticmethod
+    def _clear_missing_metadata(metadata: StreamMetadata, status: np.ndarray) -> StreamMetadata:
+        """Avoid claiming provenance for features absent from the final reading."""
+        coordinates = list(metadata.coordinates) if metadata.coordinates is not None else None
+        identities = list(metadata.identity) if metadata.identity is not None else None
+        if coordinates is not None:
+            for index, feature_status in enumerate(status):
+                if feature_status == ObservationStatus.MISSING.value:
+                    coordinates[index] = None
+        if identities is not None:
+            for index, feature_status in enumerate(status):
+                if feature_status == ObservationStatus.MISSING.value:
+                    identities[index] = None
+        return metadata.model_copy(update={"coordinates": coordinates, "identity": identities})
 
     def get_streams(self) -> list[Stream]:
         """Return domain data streams."""
@@ -324,7 +345,7 @@ class ReefWatchAdapter(DomainAdapter):
             self._vessel_metadata(
                 self._em.label,
                 vessels,
-                observations[5].size,
+                observations[5],
                 self._config.fish.n_species + 2,
             ),
         ]
@@ -332,12 +353,15 @@ class ReefWatchAdapter(DomainAdapter):
         for stream, obs, metadata, markers in zip(
             self._streams, observations, stream_metadata, missing_markers, strict=True
         ):
-            status = self._observation_status(obs, markers)
             # Apply potential interference to non-AIS streams
             if stream.label != self._ais.label:
                 obs, interfered = self._interference.apply_interference(obs)
             else:
                 interfered = False
+            # Interference injects NaN data gaps or numeric corruption; only the
+            # former changes availability, while corruption remains present data.
+            status = self._observation_status(obs, markers)
+            metadata = self._clear_missing_metadata(metadata, status)
             # Replace NaN with 0 for stream compatibility
             obs = np.nan_to_num(obs, nan=0.0)
             stream.metadata = metadata
