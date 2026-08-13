@@ -330,14 +330,23 @@ def _markdown(results: dict[str, Any]) -> str:
             "pays for competence. Its pooled designed-report count should be read "
             "alongside the per-seed counts, not as a standalone verdict.",
             "",
-            "The all-designed-seed arm begins with every seeded genome tagged, but the "
-            "engine's reporter-group telemetry classifies reports from designed agents "
-            "that die during the same step as ordinary because grouping uses the "
-            "post-step living population. This is a telemetry classification artifact, "
-            f"not tag-loss: all "
+            "The all-designed-seed arm begins with every seeded genome tagged, and the "
+            "corrected reporter-group telemetry resolves each report through its "
+            "author's genome even when that author dies during the same step. The "
+            "post-fix all-designed arm therefore has no ordinary reports; the "
+            f"diagnostic found "
             f"{results['summary']['all_designed_seed']['designed_reports_classified_ordinary_after_death']} "
-            f"reports classified this way in the {len(results['seeds'])}-seed artifact "
-            "were emitted by designed agents that died before the step record was built.",
+            "reports whose authors died before the step record was built, but they "
+            "remain correctly credited to the designed group.",
+            "",
+            f"The corrected invasion arm has {results['summary']['invasion']['designed_reports']} "
+            "designed reports, while the pre-fix artifact had 132 because five "
+            "designed reports from authors that died in-step were classified as "
+            "ordinary. Seed 50 contributes 86 reports / 43 correct, and 6 of 20 "
+            "seeds produce no designed reports at all. The pooled invasion precision "
+            "is therefore effectively driven by one lineage that happened to get "
+            "attached to vessel streams; it is not evidence about the typical "
+            "lineage. The per-seed table is the relevant visibility into that spread.",
             "",
             "The oracle row is a harness-local diagnostic upper bound only.",
         ]
