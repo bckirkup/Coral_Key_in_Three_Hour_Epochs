@@ -120,6 +120,28 @@ class TestTattleTotsIntegration:
             assert s.current_data is not None
             assert len(s.current_data) == s.dimensionality
 
+    def test_domain_geometry_reaches_agent_observation(self) -> None:
+        """Domain-declared geometry survives the agent sensing pipeline."""
+        from tattletots.engine.config import SimulationConfig
+        from tattletots.engine.world import World
+
+        adapter = ReefWatchAdapter()
+        world = World(config=SimulationConfig(initial_population=2, seed=42))
+        for stream in adapter.get_streams():
+            world.add_stream(stream)
+        for user in adapter.get_users():
+            world.add_user(user)
+        world.seed_population()
+        agent = next(iter(world.agents.values()))
+        agent.state.input_stream_ids = list(world.streams)
+
+        adapter.step(0)
+        observation = world._prepare_input_pipeline(agent)
+
+        assert observation.metadata is not None
+        assert observation.metadata.coordinates is not None
+        assert observation.metadata.feature_count == observation.data.size
+
     def test_relevance_scoring_differentiates_users(self) -> None:
         """Different users should get different relevance scores for same signal."""
         adapter = ReefWatchAdapter()

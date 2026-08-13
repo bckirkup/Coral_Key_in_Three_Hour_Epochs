@@ -11,6 +11,7 @@ from tattletots.engine.response_judgment import judge_necessity
 from tattletots.interface.domain_adapter import DomainAdapter
 from tattletots.models.dispatch_target import DispatchTarget
 from tattletots.models.location import EventLocation
+from tattletots.models.observation import ObservationStatus, StreamMetadata
 from tattletots.models.report import Report
 from tattletots.models.response_outcome import ResponseOutcome
 from tattletots.models.stream import Stream
@@ -20,7 +21,7 @@ from coral_key.adversary.interference import PlatformInterference
 from coral_key.adversary.iuu import IUUDetectionOracle
 from coral_key.config import ScenarioConfig
 from coral_key.fleet.behavior import FleetManager
-from coral_key.fleet.vessel import VesselType
+from coral_key.fleet.vessel import Vessel, VesselType
 from coral_key.metrics import EpochMetrics, MetricsCollector
 from coral_key.ocean.fish_stock import FishStock
 from coral_key.ocean.grid import OceanGrid
@@ -164,8 +165,143 @@ class ReefWatchAdapter(DomainAdapter):
                 dimensionality=dim,
                 label=label,
                 current_data=np.zeros(dim),
+                metadata=self._initial_metadata(label, dim),
             )
             self._streams.append(stream)
+
+    def _initial_metadata(self, label: str, dimensionality: int) -> StreamMetadata:
+        """Declare static provenance where it is known before the first epoch."""
+        if label == self._sar.label:
+            return self._zone_metadata(label)
+        if label == self._ocean_sensor.label:
+            return self._zone_metadata(label, repetitions=3)
+        return StreamMetadata(
+            modality=[label] * dimensionality,
+            coordinates=[None] * dimensionality,
+            identity=[None] * dimensionality,
+            footprints=[None] * dimensionality,
+            resolution=[None] * dimensionality,
+        )
+
+    def _zone_metadata(self, modality: str, repetitions: int = 1) -> StreamMetadata:
+        """Declare grid-zone provenance for a per-zone sensor stream."""
+        coordinates: list[tuple[float, ...] | None] = [
+            (float(zone.x), float(zone.y)) for _ in range(repetitions) for zone in self._grid.zones
+        ]
+        footprint: list[tuple[float, ...] | None] = [(1.0, 1.0)] * len(coordinates)
+        return StreamMetadata(
+            coordinates=coordinates,
+            modality=[modality] * len(coordinates),
+            identity=[None] * len(coordinates),
+            footprints=footprint,
+            resolution=[1.0] * len(coordinates),
+        )
+
+    def _ais_metadata(self, vessels: list[Vessel], observation: np.ndarray) -> StreamMetadata:
+        """Declare actual or self-reported AIS positions without sanitizing spoofing."""
+        coordinates: list[tuple[float, ...] | None] = []
+        identities: list[str | None] = []
+        footprint = (0.0, 0.0)
+        for index, vessel in enumerate(vessels[: self._ais.n_vessels]):
+            position = vessel.reported_position or vessel.position
+            offset = index * self._ais.features_per_vessel
+            for feature_index in range(self._ais.features_per_vessel):
+                available = offset + feature_index < observation.size and not np.isnan(
+                    observation[offset + feature_index]
+                )
+                coordinate = (float(position.zone_x), float(position.zone_y)) if available else None
+                coordinates.append(coordinate)
+                identities.append(vessel.id if available else None)
+        missing = self._ais.dimensionality - len(coordinates)
+        coordinates.extend([None] * missing)
+        identities.extend([None] * missing)
+        return StreamMetadata(
+            coordinates=coordinates,
+            modality=[self._ais.label] * self._ais.dimensionality,
+            identity=identities,
+            footprints=[footprint] * self._ais.dimensionality,
+            resolution=[0.0] * self._ais.dimensionality,
+        )
+
+    def _vessel_metadata(
+        self,
+        label: str,
+        vessels: list[Vessel],
+        observation: np.ndarray,
+        stride: int,
+    ) -> StreamMetadata:
+        """Declare per-vessel provenance from the observation's own availability."""
+        coordinates: list[tuple[float, ...] | None] = []
+        identities: list[str | None] = []
+        dimensionality = observation.size
+        for index in range(min(len(vessels), dimensionality // stride)):
+            vessel = vessels[index]
+            coordinate = (float(vessel.position.zone_x), float(vessel.position.zone_y))
+            offset = index * stride
+            for feature_index in range(stride):
+                available = not np.isnan(observation[offset + feature_index])
+                coordinates.append(coordinate if available else None)
+                identities.append(vessel.id if available else None)
+        missing = dimensionality - len(coordinates)
+        coordinates.extend([None] * missing)
+        identities.extend([None] * missing)
+        return StreamMetadata(
+            coordinates=coordinates,
+            modality=[label] * dimensionality,
+            identity=identities,
+            footprints=[(0.0, 0.0)] * dimensionality,
+            resolution=[0.0] * dimensionality,
+        )
+
+    def _edna_metadata(self) -> StreamMetadata:
+        """Declare sampled-zone provenance for the current eDNA observation."""
+        zones = self._edna.last_sample_zones
+        if zones is None:
+            return self._initial_metadata(self._edna.label, self._edna.dimensionality)
+        coordinates: list[tuple[float, ...] | None] = [
+            (
+                float(self._grid.zones[int(zone)].x),
+                float(self._grid.zones[int(zone)].y),
+            )
+            for _ in range(self._config.fish.n_species)
+            for zone in zones
+        ]
+        return StreamMetadata(
+            coordinates=coordinates,
+            modality=[self._edna.label] * len(coordinates),
+            identity=[None] * len(coordinates),
+            footprints=[(1.0, 1.0)] * len(coordinates),
+            resolution=[1.0] * len(coordinates),
+        )
+
+    @staticmethod
+    def _observation_status(
+        observation: np.ndarray, missing_values: tuple[float, ...] = ()
+    ) -> np.ndarray:
+        """Convert sensor absence markers into explicit transport statuses."""
+        missing = np.isnan(observation)
+        for value in missing_values:
+            missing |= observation == value
+        return np.where(
+            missing,
+            ObservationStatus.MISSING.value,
+            ObservationStatus.OBSERVED.value,
+        )
+
+    @staticmethod
+    def _clear_missing_metadata(metadata: StreamMetadata, status: np.ndarray) -> StreamMetadata:
+        """Avoid claiming provenance for features absent from the final reading."""
+        coordinates = list(metadata.coordinates) if metadata.coordinates is not None else None
+        identities = list(metadata.identity) if metadata.identity is not None else None
+        if coordinates is not None:
+            for index, feature_status in enumerate(status):
+                if feature_status == ObservationStatus.MISSING.value:
+                    coordinates[index] = None
+        if identities is not None:
+            for index, feature_status in enumerate(status):
+                if feature_status == ObservationStatus.MISSING.value:
+                    identities[index] = None
+        return metadata.model_copy(update={"coordinates": coordinates, "identity": identities})
 
     def get_streams(self) -> list[Stream]:
         """Return domain data streams."""
@@ -199,15 +335,37 @@ class ReefWatchAdapter(DomainAdapter):
 
         # 4. Generate sensor observations and update streams
         observations = self._generate_observations(time_step)
-        for stream, obs in zip(self._streams, observations, strict=True):
+        vessels = self._fleet.vessels
+        stream_metadata = [
+            self._ais_metadata(vessels, observations[0]),
+            self._zone_metadata(self._sar.label),
+            self._initial_metadata(self._catch_reports.label, observations[2].size),
+            self._zone_metadata(self._ocean_sensor.label, repetitions=3),
+            self._edna_metadata(),
+            self._vessel_metadata(
+                self._em.label,
+                vessels,
+                observations[5],
+                self._config.fish.n_species + 2,
+            ),
+        ]
+        missing_markers = ((), (-1.0,), (), (), (-1.0,), (-1.0,))
+        for stream, obs, metadata, markers in zip(
+            self._streams, observations, stream_metadata, missing_markers, strict=True
+        ):
             # Apply potential interference to non-AIS streams
             if stream.label != self._ais.label:
                 obs, interfered = self._interference.apply_interference(obs)
             else:
                 interfered = False
+            # Interference injects NaN data gaps or numeric corruption; only the
+            # former changes availability, while corruption remains present data.
+            status = self._observation_status(obs, markers)
+            metadata = self._clear_missing_metadata(metadata, status)
             # Replace NaN with 0 for stream compatibility
             obs = np.nan_to_num(obs, nan=0.0)
-            stream.update(obs)
+            stream.metadata = metadata
+            stream.update(obs, status=status)
 
         # 5. Record metrics
         reported_catch = self._fleet.get_reported_catches()

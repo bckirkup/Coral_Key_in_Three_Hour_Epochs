@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 from tattletots.models.dispatch_target import DispatchTarget
+from tattletots.models.observation import ObservationStatus
 from tattletots.models.report import Report
 
 from coral_key.adapter import ReefWatchAdapter
 from coral_key.config import ScenarioConfig
-from coral_key.fleet.vessel import VesselType
+from coral_key.fleet.vessel import Vessel, VesselPosition, VesselType
 
 
 class TestReefWatchAdapter:
@@ -57,6 +58,83 @@ class TestReefWatchAdapter:
         # All streams should have non-empty data
         for stream in adapter.get_streams():
             assert stream.current_data.shape[-1] == stream.dimensionality
+
+    def test_step_publishes_geometry_and_status_declarations(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+
+        for stream in adapter.get_streams():
+            assert stream.metadata is not None
+            assert stream.metadata.feature_count == stream.dimensionality
+            assert stream.current_status.size == stream.dimensionality
+            coordinates = stream.metadata.coordinates or [None] * stream.dimensionality
+            identities = stream.metadata.identity or [None] * stream.dimensionality
+            for feature_status, coordinate, identity in zip(
+                stream.current_status, coordinates, identities, strict=True
+            ):
+                if feature_status == ObservationStatus.MISSING.value:
+                    assert coordinate is None
+                    assert identity is None
+
+        sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
+        assert sar.metadata is not None
+        assert sar.metadata.coordinates is not None
+        assert (0.0, 0.0) in sar.metadata.coordinates
+        assert np.all(sar.current_status == ObservationStatus.OBSERVED.value)
+
+    def test_missing_sensor_signal_is_distinct_from_observed_zero(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+        observed_sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
+        assert np.any(observed_sar.current_data == 0.0)
+        assert np.all(observed_sar.current_status == ObservationStatus.OBSERVED.value)
+
+        adapter.step(1)
+        missing_sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
+        assert np.all(missing_sar.current_data == -1.0)
+        assert np.all(missing_sar.current_status == ObservationStatus.MISSING.value)
+
+    def test_declared_coordinates_share_ground_truth_grid(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+        locations = adapter.get_active_locations(0)
+        sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
+        assert sar.metadata is not None
+        assert sar.metadata.coordinates is not None
+        declared = {
+            (int(coordinate[0]), int(coordinate[1]))
+            for coordinate in sar.metadata.coordinates
+            if coordinate is not None
+        }
+        assert all(location in declared for location in locations)
+
+    def test_spoofed_ais_is_present_at_claimed_coordinate_but_dark_is_missing(self) -> None:
+        adapter = ReefWatchAdapter()
+        spoofed = Vessel(
+            position=VesselPosition(zone_x=1, zone_y=1),
+            reported_position=VesselPosition(zone_x=3, zone_y=2),
+            ais_enabled=True,
+            at_port=False,
+        )
+        dark = Vessel(
+            position=VesselPosition(zone_x=4, zone_y=4),
+            ais_enabled=False,
+            at_port=False,
+        )
+        observation = np.array([0.3, 0.2, 0.1, 0.1, 1.0, np.nan, np.nan, np.nan, np.nan, np.nan])
+
+        metadata = adapter._ais_metadata([spoofed, dark], observation)
+
+        assert metadata.coordinates is not None
+        assert metadata.coordinates[0] == (3.0, 2.0)
+        observation[1] = np.nan
+        metadata = adapter._ais_metadata([spoofed, dark], observation)
+        assert metadata.coordinates[1] is None
+        assert all(coordinate is None for coordinate in metadata.coordinates[5:])
+        status = adapter._observation_status(observation)
+        assert status[0] == ObservationStatus.OBSERVED.value
+        assert status[1] == ObservationStatus.MISSING.value
+        assert status[5] == ObservationStatus.MISSING.value
 
     def test_ground_truth_returns_bool(self) -> None:
         adapter = ReefWatchAdapter()

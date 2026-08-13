@@ -28,6 +28,16 @@ class AISStream:
         return self._dimensionality
 
     @property
+    def n_vessels(self) -> int:
+        """Number of vessel slots represented by the stream."""
+        return self._n_vessels
+
+    @property
+    def features_per_vessel(self) -> int:
+        """Number of features represented for each vessel."""
+        return self._features_per_vessel
+
+    @property
     def label(self) -> str:
         return "ais_vms"
 

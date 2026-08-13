@@ -27,6 +27,7 @@ class EDNAStream:
         self._sample_interval = sample_interval
         self._sensitivity = detection_sensitivity
         self._rng = rng if rng is not None else np.random.default_rng(seed)
+        self._last_sample_zones: np.ndarray | None = None
 
     @property
     def dimensionality(self) -> int:
@@ -36,6 +37,11 @@ class EDNAStream:
     def label(self) -> str:
         return "edna_sampling"
 
+    @property
+    def last_sample_zones(self) -> np.ndarray | None:
+        """Return the zones represented by the most recent sample."""
+        return self._last_sample_zones
+
     def observe(self, fish_stock: FishStock, epoch: int, n_zones: int) -> np.ndarray:
         """Generate eDNA observation.
 
@@ -43,10 +49,12 @@ class EDNAStream:
         Only produces real data on sample epochs; otherwise returns -1 (no data).
         """
         if epoch % self._sample_interval != 0:
+            self._last_sample_zones = None
             return np.full(self.dimensionality, -1.0)
 
         # Select random sample zones
         sample_zones = self._rng.integers(0, n_zones, size=self._n_sample_zones)
+        self._last_sample_zones = sample_zones
 
         data = np.zeros(self.dimensionality)
         for i, sp in enumerate(fish_stock.species[: self._n_species]):
