@@ -68,9 +68,12 @@ class TestReefWatchAdapter:
             assert stream.metadata.feature_count == stream.dimensionality
             assert stream.current_status.size == stream.dimensionality
             coordinates = stream.metadata.coordinates or [None] * stream.dimensionality
+            sensor_coordinates = (
+                stream.metadata.sensor_coordinates or [None] * stream.dimensionality
+            )
             identities = stream.metadata.identity or [None] * stream.dimensionality
-            for feature_status, coordinate, identity in zip(
-                stream.current_status, coordinates, identities, strict=True
+            for feature_status, coordinate, _sensor_coordinate, identity in zip(
+                stream.current_status, coordinates, sensor_coordinates, identities, strict=True
             ):
                 if feature_status == ObservationStatus.MISSING.value:
                     assert coordinate is None
@@ -78,8 +81,8 @@ class TestReefWatchAdapter:
 
         sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
         assert sar.metadata is not None
-        assert sar.metadata.coordinates is not None
-        assert (0.0, 0.0) in sar.metadata.coordinates
+        assert sar.metadata.sensor_coordinates is not None
+        assert (0.0, 0.0) in sar.metadata.sensor_coordinates
         assert np.all(sar.current_status == ObservationStatus.OBSERVED.value)
 
     def test_missing_sensor_signal_is_distinct_from_observed_zero(self) -> None:
@@ -93,6 +96,43 @@ class TestReefWatchAdapter:
         missing_sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
         assert np.all(missing_sar.current_data == -1.0)
         assert np.all(missing_sar.current_status == ObservationStatus.MISSING.value)
+        assert missing_sar.metadata is not None
+        assert missing_sar.metadata.sensor_coordinates is not None
+        assert all(coordinate is not None for coordinate in missing_sar.metadata.sensor_coordinates)
+
+    def test_static_sensor_geometry_survives_missing_readings(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+        adapter.step(1)
+
+        for label in ("sar_satellite", "oceanographic"):
+            stream = next(item for item in adapter.get_streams() if item.label == label)
+            assert stream.metadata is not None
+            sensor_coordinates = stream.metadata.sensor_coordinates
+            assert sensor_coordinates is not None
+            for feature_status, coordinate in zip(
+                stream.current_status, sensor_coordinates, strict=True
+            ):
+                if feature_status == ObservationStatus.MISSING.value:
+                    assert coordinate is not None
+
+        edna = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert edna.metadata is not None
+        assert edna.metadata.sensor_coordinates is not None
+        assert all(coordinate is None for coordinate in edna.metadata.sensor_coordinates)
+
+    def test_edna_geometry_is_declared_only_on_sample_epochs(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+        sampled = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert sampled.metadata is not None
+        assert sampled.metadata.sensor_coordinates is not None
+
+        adapter.step(1)
+        unsampled = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert unsampled.metadata is not None
+        assert unsampled.metadata.sensor_coordinates is not None
+        assert all(coordinate is None for coordinate in unsampled.metadata.sensor_coordinates)
 
     def test_declared_coordinates_share_ground_truth_grid(self) -> None:
         adapter = ReefWatchAdapter()
@@ -100,10 +140,10 @@ class TestReefWatchAdapter:
         locations = adapter.get_active_locations(0)
         sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
         assert sar.metadata is not None
-        assert sar.metadata.coordinates is not None
+        assert sar.metadata.sensor_coordinates is not None
         declared = {
             (int(coordinate[0]), int(coordinate[1]))
-            for coordinate in sar.metadata.coordinates
+            for coordinate in sar.metadata.sensor_coordinates
             if coordinate is not None
         }
         assert all(location in declared for location in locations)

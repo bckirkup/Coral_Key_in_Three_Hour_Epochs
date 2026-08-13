@@ -178,19 +178,20 @@ class ReefWatchAdapter(DomainAdapter):
         return StreamMetadata(
             modality=[label] * dimensionality,
             coordinates=[None] * dimensionality,
+            sensor_coordinates=[None] * dimensionality,
             identity=[None] * dimensionality,
             footprints=[None] * dimensionality,
             resolution=[None] * dimensionality,
         )
 
     def _zone_metadata(self, modality: str, repetitions: int = 1) -> StreamMetadata:
-        """Declare grid-zone provenance for a per-zone sensor stream."""
+        """Declare static grid-zone geometry for a per-zone sensor stream."""
         coordinates: list[tuple[float, ...] | None] = [
             (float(zone.x), float(zone.y)) for _ in range(repetitions) for zone in self._grid.zones
         ]
         footprint: list[tuple[float, ...] | None] = [(1.0, 1.0)] * len(coordinates)
         return StreamMetadata(
-            coordinates=coordinates,
+            sensor_coordinates=coordinates,
             modality=[modality] * len(coordinates),
             identity=[None] * len(coordinates),
             footprints=footprint,
@@ -254,7 +255,7 @@ class ReefWatchAdapter(DomainAdapter):
         )
 
     def _edna_metadata(self) -> StreamMetadata:
-        """Declare sampled-zone provenance for the current eDNA observation."""
+        """Declare geometry only for the current eDNA sample."""
         zones = self._edna.last_sample_zones
         if zones is None:
             return self._initial_metadata(self._edna.label, self._edna.dimensionality)
@@ -267,7 +268,7 @@ class ReefWatchAdapter(DomainAdapter):
             for zone in zones
         ]
         return StreamMetadata(
-            coordinates=coordinates,
+            sensor_coordinates=coordinates,
             modality=[self._edna.label] * len(coordinates),
             identity=[None] * len(coordinates),
             footprints=[(1.0, 1.0)] * len(coordinates),
@@ -290,7 +291,7 @@ class ReefWatchAdapter(DomainAdapter):
 
     @staticmethod
     def _clear_missing_metadata(metadata: StreamMetadata, status: np.ndarray) -> StreamMetadata:
-        """Avoid claiming provenance for features absent from the final reading."""
+        """Clear observed-object provenance absent from the final reading."""
         coordinates = list(metadata.coordinates) if metadata.coordinates is not None else None
         identities = list(metadata.identity) if metadata.identity is not None else None
         if coordinates is not None:
