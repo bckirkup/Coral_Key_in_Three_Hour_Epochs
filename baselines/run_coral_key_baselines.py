@@ -13,6 +13,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ from coral_key.config import ScenarioConfig
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent
+_SAFE_DIR_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")
 for _parent in [_SCRIPT_DIR, *_SCRIPT_DIR.parents]:
     _large_experiments = _parent / "TattleTots" / "Large Experiments"
     if (_large_experiments / "baseline_parallel.py").is_file():
@@ -108,12 +110,26 @@ def _load_scan_config(config_path: Path) -> dict[str, Any]:
         return json.load(f)
 
 
+def _sanitize_dir_name(raw: object, default: str) -> str:
+    """Return a safe single-component directory name from config-provided data.
+
+    Only a strict allowlist (letters, digits, dot, underscore, hyphen) is accepted so
+    values loaded from a config file cannot inject path separators or traversal segments.
+    """
+    candidate = str(raw)
+    if _SAFE_DIR_NAME_RE.fullmatch(candidate) and candidate not in {".", ".."}:
+        return candidate
+    return default
+
+
 def _resolve_output_dir(config_data: dict[str, Any], smoke_test: bool) -> Path:
-    output_dir_name = (
-        "coral_key_baselines_smoke_results"
-        if smoke_test
-        else config_data.get("output_directory", "coral_key_baselines_results")
-    )
+    if smoke_test:
+        output_dir_name = "coral_key_baselines_smoke_results"
+    else:
+        output_dir_name = _sanitize_dir_name(
+            config_data.get("output_directory", "coral_key_baselines_results"),
+            "coral_key_baselines_results",
+        )
     output_dir = _safe_path_under_base(output_dir_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
