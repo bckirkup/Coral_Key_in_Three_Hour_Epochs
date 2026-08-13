@@ -445,6 +445,20 @@ class ReefWatchAdapter(DomainAdapter):
             locations.append((int(str(zx)), int(str(zy))))
         return locations
 
+    def get_location_frame(self) -> tuple[EventLocation, EventLocation]:
+        """Declare the grid extent without reconstructing sensor provenance."""
+        coordinates = [(zone.x, zone.y) for zone in self._grid.zones]
+        return (
+            (
+                min(coordinate[0] for coordinate in coordinates),
+                min(coordinate[1] for coordinate in coordinates),
+            ),
+            (
+                max(coordinate[0] for coordinate in coordinates),
+                max(coordinate[1] for coordinate in coordinates),
+            ),
+        )
+
     def infer_report_location(
         self,
         stream_data: list[NDArray[np.float64]],
