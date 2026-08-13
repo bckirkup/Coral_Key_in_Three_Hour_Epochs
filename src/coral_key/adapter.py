@@ -119,7 +119,6 @@ class ReefWatchAdapter(DomainAdapter):
             sample_interval=self._config.sensors.edna_sample_interval,
             rng=self._rng,
         )
-        self._edna_geometry_zones: np.ndarray | None = None
         em_cap = self._config.sensors.em_monitored_vessels
         self._em = EMStream(
             n_species=self._config.fish.n_species,
@@ -256,10 +255,8 @@ class ReefWatchAdapter(DomainAdapter):
         )
 
     def _edna_metadata(self) -> StreamMetadata:
-        """Declare static geometry for the most recently sampled eDNA zones."""
+        """Declare geometry only for the current eDNA sample."""
         zones = self._edna.last_sample_zones
-        if zones is None:
-            zones = self._edna_geometry_zones
         if zones is None:
             return self._initial_metadata(self._edna.label, self._edna.dimensionality)
         coordinates: list[tuple[float, ...] | None] = [
@@ -339,8 +336,6 @@ class ReefWatchAdapter(DomainAdapter):
 
         # 4. Generate sensor observations and update streams
         observations = self._generate_observations(time_step)
-        if self._edna.last_sample_zones is not None:
-            self._edna_geometry_zones = self._edna.last_sample_zones.copy()
         vessels = self._fleet.vessels
         stream_metadata = [
             self._ais_metadata(vessels, observations[0]),

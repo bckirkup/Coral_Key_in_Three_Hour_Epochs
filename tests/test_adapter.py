@@ -105,7 +105,7 @@ class TestReefWatchAdapter:
         adapter.step(0)
         adapter.step(1)
 
-        for label in ("sar_satellite", "oceanographic", "edna_sampling"):
+        for label in ("sar_satellite", "oceanographic"):
             stream = next(item for item in adapter.get_streams() if item.label == label)
             assert stream.metadata is not None
             sensor_coordinates = stream.metadata.sensor_coordinates
@@ -115,6 +115,24 @@ class TestReefWatchAdapter:
             ):
                 if feature_status == ObservationStatus.MISSING.value:
                     assert coordinate is not None
+
+        edna = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert edna.metadata is not None
+        assert edna.metadata.sensor_coordinates is not None
+        assert all(coordinate is None for coordinate in edna.metadata.sensor_coordinates)
+
+    def test_edna_geometry_is_declared_only_on_sample_epochs(self) -> None:
+        adapter = ReefWatchAdapter()
+        adapter.step(0)
+        sampled = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert sampled.metadata is not None
+        assert sampled.metadata.sensor_coordinates is not None
+
+        adapter.step(1)
+        unsampled = next(item for item in adapter.get_streams() if item.label == "edna_sampling")
+        assert unsampled.metadata is not None
+        assert unsampled.metadata.sensor_coordinates is not None
+        assert all(coordinate is None for coordinate in unsampled.metadata.sensor_coordinates)
 
     def test_declared_coordinates_share_ground_truth_grid(self) -> None:
         adapter = ReefWatchAdapter()
