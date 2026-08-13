@@ -106,7 +106,7 @@ class FleetManager:
                     vessel.return_to_port(port.x, port.y)
 
             # Handle AIS behavior
-            self._update_ais(vessel, enforcement_pressure)
+            self._update_ais(vessel)
 
         return total_catch
 
@@ -156,7 +156,7 @@ class FleetManager:
         )
         return np.clip(catch, 0.0, None)
 
-    def _update_ais(self, vessel: Vessel, enforcement_pressure: float) -> None:
+    def _update_ais(self, vessel: Vessel) -> None:
         """Update AIS state based on vessel behavior and adversary config."""
         if vessel.vessel_type == VesselType.IUU and not vessel.at_port:
             zone = self._grid.get_zone(vessel.position.zone_x, vessel.position.zone_y)
