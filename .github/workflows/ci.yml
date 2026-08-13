@@ -44,10 +44,12 @@ jobs:
             "ruff==0.16.1" \
             "mypy==2.3.0"
           # First-party packages are installed editable with --no-deps so no
-          # unpinned dependencies are resolved from these source checkouts.
-          pip install --only-binary=:all: --no-deps -e domain-runner
-          pip install --only-binary=:all: --no-deps -e TattleTots
-          pip install --only-binary=:all: --no-deps -e .
+          # unpinned dependencies are resolved from these source checkouts. Their
+          # version is fixed by the actions/checkout refs above, so S8544 (external
+          # version locking) does not apply to these local source installs.
+          pip install --only-binary=:all: --no-deps -e domain-runner  # NOSONAR(githubactions:S8544)
+          pip install --only-binary=:all: --no-deps -e TattleTots  # NOSONAR(githubactions:S8544)
+          pip install --only-binary=:all: --no-deps -e .  # NOSONAR(githubactions:S8544)
 
       - name: Lint with ruff
         run: |
