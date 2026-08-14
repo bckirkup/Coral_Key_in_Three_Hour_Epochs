@@ -31,10 +31,29 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -e domain-runner[dev]
-          pip install -e TattleTots[dev]
-          pip install -e ".[dev]"
+          # Pin third-party dependencies to verified versions and restrict pip to
+          # pre-built wheels so installation never builds sdists / runs setup scripts
+          # (SonarCloud githubactions:S8541 and githubactions:S8544).
+          pip install --only-binary=:all: \
+            "numpy==2.4.4" \
+            "scipy==1.17.1" \
+            "networkx==3.6.1" \
+            "pydantic==2.13.4" \
+            "pytest==9.1.1" \
+            "pytest-cov==7.1.0" \
+            "ruff==0.16.1" \
+            "mypy==2.3.0"
+          # First-party packages: build wheels from the checked-out sources, then
+          # install them hash-locked so pip verifies the exact built artifacts and
+          # resolves no unpinned dependencies (githubactions:S8541, githubactions:S8544).
+          pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/wheels" ./domain-runner ./TattleTots .
+          : > "$RUNNER_TEMP/first-party-requirements.txt"
+          for wheel in "$RUNNER_TEMP"/wheels/*.whl; do
+            printf '%s %s\n' "$wheel" "$(pip hash "$wheel" | grep -- '--hash')" \
+              >> "$RUNNER_TEMP/first-party-requirements.txt"
+          done
+          pip install --only-binary=:all: --no-deps --require-hashes \
+            -r "$RUNNER_TEMP/first-party-requirements.txt"
 
       - name: Lint with ruff
         run: |
