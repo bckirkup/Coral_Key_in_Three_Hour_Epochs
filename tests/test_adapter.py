@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from tattletots.interface.adapter_conformance import assert_adapter_conformance
 from tattletots.models.dispatch_target import DispatchTarget
 from tattletots.models.observation import ObservationStatus
 from tattletots.models.report import Report
@@ -12,7 +13,43 @@ from coral_key.config import ScenarioConfig
 from coral_key.fleet.vessel import Vessel, VesselPosition, VesselType
 
 
+def _small_config() -> ScenarioConfig:
+    return ScenarioConfig(
+        ocean=ScenarioConfig.model_fields["ocean"]
+        .default_factory()
+        .model_copy(update={"n_zones_x": 4, "n_zones_y": 4}),
+        fleet=ScenarioConfig.model_fields["fleet"]
+        .default_factory()
+        .model_copy(update={"n_legal_vessels": 3, "n_gaming_vessels": 1, "n_iuu_vessels": 1}),
+        seed=42,
+    )
+
+
+def _coral_state_independence_factory() -> tuple[ReefWatchAdapter, ReefWatchAdapter]:
+    quiet = ReefWatchAdapter(config=_small_config())
+    active = ReefWatchAdapter(config=_small_config())
+    for quiet_vessel, active_vessel in zip(
+        quiet._fleet.vessels, active._fleet.vessels, strict=True
+    ):
+        active_vessel.id = quiet_vessel.id
+    quiet_iuu = next(v for v in quiet._fleet.vessels if v.vessel_type == VesselType.IUU)
+    active_iuu = next(v for v in active._fleet.vessels if v.vessel_type == VesselType.IUU)
+    mpa_zones = quiet._grid.get_mpa_zones()
+    quiet_iuu.depart_port(mpa_zones[0].x, mpa_zones[0].y)
+    active_iuu.depart_port(mpa_zones[1].x, mpa_zones[1].y)
+    return quiet, active
+
+
 class TestReefWatchAdapter:
+    def test_adapter_conforms_to_published_instrument_contract(self) -> None:
+        report = assert_adapter_conformance(
+            ReefWatchAdapter(config=_small_config()),
+            steps=20,
+            state_independence_factory=_coral_state_independence_factory,
+        )
+
+        assert report.valid
+
     def test_construction(self) -> None:
         adapter = ReefWatchAdapter()
         assert adapter
@@ -242,6 +279,33 @@ class TestReefWatchAdapter:
 
         # Should have metrics for all epochs
         assert len(adapter.metrics_collector.epoch_history) == 20
+
+    def test_single_feature_spikes_decode_to_declared_geometry(self) -> None:
+        adapter = ReefWatchAdapter(config=_small_config())
+        adapter.step(0)
+        for stream in adapter.get_streams():
+            metadata = stream.metadata
+            if metadata is None:
+                continue
+            coordinates = metadata.sensor_coordinates
+            if coordinates is None or not any(coordinate is not None for coordinate in coordinates):
+                coordinates = metadata.coordinates
+            if coordinates is None:
+                continue
+            for feature_index, coordinate in enumerate(coordinates):
+                if coordinate is None:
+                    continue
+                data = np.zeros(stream.dimensionality)
+                data[feature_index] = 1.0
+
+                location = adapter.infer_report_location([data], [stream.label])
+
+                assert location == tuple(int(value) for value in coordinate)
+
+    def test_unsupported_stream_abstains(self) -> None:
+        adapter = ReefWatchAdapter(config=_small_config())
+
+        assert adapter.infer_report_location([np.ones(2)], ["unknown_stream"]) is None
 
     def test_to_from_config_roundtrip(self) -> None:
         config = ScenarioConfig(total_epochs=100, seed=99)

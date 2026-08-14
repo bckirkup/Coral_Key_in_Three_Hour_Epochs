@@ -464,14 +464,65 @@ class ReefWatchAdapter(DomainAdapter):
         self,
         stream_data: list[NDArray[np.float64]],
         stream_labels: list[str],
-    ) -> EventLocation:
-        """Infer report location from AIS stream peak zone."""
+    ) -> EventLocation | None:
+        """Infer location from the strongest normalized declared evidence.
+
+        Each candidate stream is normalized by its RMS magnitude before its
+        strongest feature competes with other modalities. The winning feature
+        is mapped through the geometry published by that stream.
+        """
+        best = self._best_declared_geometry_feature(stream_data, stream_labels)
+        if best is None:
+            return None
+        _, _, _, location = best
+        return location
+
+    def _best_declared_geometry_feature(
+        self,
+        stream_data: list[NDArray[np.float64]],
+        stream_labels: list[str],
+    ) -> tuple[int, float, int, EventLocation] | None:
+        """Return the strongest normalized feature and its declared location."""
+        streams_by_label = {stream.label: stream for stream in self._streams}
+        best: tuple[int, float, int, EventLocation] | None = None
         for data, label in zip(stream_data, stream_labels, strict=False):
-            if label == "ais_positions" and data.size > 0:
-                peak_idx = int(np.argmax(np.abs(data)))
-                grid_ny = self._grid.ny
-                return (peak_idx // grid_ny, peak_idx % grid_ny)
-        return (0, 0)
+            stream = streams_by_label.get(label)
+            if stream is None or stream.metadata is None:
+                continue
+            coordinates = stream.metadata.sensor_coordinates
+            if coordinates is None or not any(coordinate is not None for coordinate in coordinates):
+                coordinates = stream.metadata.coordinates
+            if coordinates is None:
+                continue
+            finite = np.isfinite(data)
+            if not np.any(finite):
+                continue
+            magnitudes = np.abs(data)
+            magnitudes[~finite] = 0.0
+            scale = float(np.sqrt(np.mean(magnitudes**2)))
+            if scale <= 0.0:
+                continue
+            feature_index = int(np.argmax(magnitudes))
+            if feature_index >= len(coordinates) or coordinates[feature_index] is None:
+                continue
+            coordinate = coordinates[feature_index]
+            if coordinate is None or len(coordinate) < 2:
+                continue
+            score = float(magnitudes[feature_index] / scale)
+            location = (int(round(coordinate[0])), int(round(coordinate[1])))
+            modalities = stream.metadata.modality or []
+            detection_terms = ("ais", "sar", "electronic_monitoring")
+            tier = (
+                0
+                if any(
+                    any(term in (modality or "").lower() for term in detection_terms)
+                    for modality in modalities
+                )
+                else 1
+            )
+            if best is None or (tier, -score) < (best[0], -best[1]):
+                best = (tier, score, feature_index, location)
+        return best
 
     def score_relevance(self, signal_vector: NDArray[np.float64], user: User) -> float:
         from tattletots.engine.relevance import score_report_relevance
