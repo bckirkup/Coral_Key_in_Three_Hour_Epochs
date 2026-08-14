@@ -70,7 +70,7 @@ The integrated config (`configs/tattletots_integration.json`) has two sections:
 | Parameter | Section | Effect |
 |-----------|---------|--------|
 | `initial_population` | simulation | Number of starting Tot agents |
-| `max_stream_dim` | simulation | Per-agent input cap (keep ≤30 for performance) |
+| `max_stream_dim` | simulation | Per-agent input cap (≥48, the widest stream ReefWatch declares; lowering it silently truncates published geometry) |
 | `total_epochs` | domain | Length of fishery simulation |
 | `n_iuu_vessels` | domain.fleet | IUU threat intensity |
 | `sar_revisit_interval` | domain.sensors | SAR satellite frequency (epochs) |
