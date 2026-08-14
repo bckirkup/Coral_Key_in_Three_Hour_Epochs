@@ -80,7 +80,7 @@ def _build_world(seed: int, epochs: int, arm: str) -> tuple[ReefWatchAdapter, Wo
         trust_delta_pos=0.05,
         trust_delta_miss=0.15,
         subsidy_rate=0.1,
-        max_stream_dim=30,
+        max_stream_dim=48,
     )
     world = World(config=config)
     for stream in adapter.get_streams():
