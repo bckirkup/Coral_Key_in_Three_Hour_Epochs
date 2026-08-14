@@ -26,6 +26,7 @@ from coral_key.reporter_policy import CORAL_REPORTER_POLICY_NAME
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _REPORTER_FRACTION = 0.15
+_MAX_STREAM_DIM = 48
 _ORACLE_POLICY_NAME = "coral_oracle_diagnostic_upper_bound"
 _DEFAULT_SEEDS = [
     42,
@@ -80,7 +81,7 @@ def _build_world(seed: int, epochs: int, arm: str) -> tuple[ReefWatchAdapter, Wo
         trust_delta_pos=0.05,
         trust_delta_miss=0.15,
         subsidy_rate=0.1,
-        max_stream_dim=48,
+        max_stream_dim=_MAX_STREAM_DIM,
     )
     world = World(config=config)
     for stream in adapter.get_streams():
@@ -271,6 +272,10 @@ def _summarize_arms(results: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     return summary
 
 
+def _busiest_invasion_seed(invasion_runs: list[dict[str, Any]]) -> dict[str, Any]:
+    return max(invasion_runs, key=lambda run: int(run["designed_reports"]))
+
+
 def _markdown(results: dict[str, Any]) -> str:
     lines = [
         "# Coral Key designed reporter measurement",
@@ -280,6 +285,7 @@ def _markdown(results: dict[str, Any]) -> str:
         "",
         f"- Seeds: `{', '.join(str(seed) for seed in results['seeds'])}`",
         f"- Epochs per run: `{results['epochs']}`",
+        f"- Per-agent input cap (`max_stream_dim`): `{results['max_stream_dim']}`",
         f"- Mean static-prior precision: **{results['nulls']['mean_static_prior_precision']:.2%}**",
         f"- Mean uniform precision: **{results['nulls']['mean_uniform_precision']:.2%}**",
         "",
@@ -323,12 +329,21 @@ def _markdown(results: dict[str, Any]) -> str:
             "",
             "The designed reporter clears the static-prior null when it receives the "
             "published evidence needed to localize a vessel. However, stochastic input "
-            "redrawing exposes it to AIS and/or SAR evidence on only about 2% of adult "
-            "designed-agent steps; the available inputs are drawn from a pool dominated "
-            "by peer residual streams. The invasion arm therefore measures input "
-            "starvation at least as much as it measures whether the ordinary economy "
-            "pays for competence. Its pooled designed-report count should be read "
-            "alongside the per-seed counts, not as a standalone verdict.",
+            "redrawing exposes it to AIS and/or SAR evidence on only "
+            f"{results['summary']['invasion']['mean_ais_or_sar_evidence_rate']:.2%} of "
+            "adult designed-agent steps in the invasion arm and "
+            f"{results['summary']['all_designed_seed']['mean_ais_or_sar_evidence_rate']:.2%} "
+            "in the all-designed arm; the available inputs are drawn from a pool "
+            "dominated by peer residual streams. The invasion arm therefore measures "
+            "input starvation at least as much as it measures whether the ordinary "
+            "economy pays for competence. Its pooled designed-report count should be "
+            "read alongside the per-seed counts, not as a standalone verdict.",
+            "",
+            "The per-agent input cap is set to the widest stream ReefWatch declares, so "
+            "every declared oceanographic feature can reach an agent. These numbers "
+            "supersede the earlier artifact measured at a cap of 30, under which 18 of "
+            "the 48 declared oceanographic features reached no agent; the two are not "
+            "comparable run for run, because the agents' input space differs.",
             "",
             "The all-designed-seed arm begins with every seeded genome tagged, and the "
             "corrected reporter-group telemetry resolves each report through its "
@@ -339,13 +354,14 @@ def _markdown(results: dict[str, Any]) -> str:
             "reports whose authors died before the step record was built, but they "
             "remain correctly credited to the designed group.",
             "",
-            f"The corrected invasion arm has {results['summary']['invasion']['designed_reports']} "
-            "designed reports, while the pre-fix artifact had 132 because five "
-            "designed reports from authors that died in-step were classified as "
-            "ordinary. Seed 50 contributes 86 reports / 43 correct, and 6 of 20 "
-            "seeds produce no designed reports at all. The pooled invasion precision "
-            "is therefore effectively driven by one lineage that happened to get "
-            "attached to vessel streams; it is not evidence about the typical "
+            f"The invasion arm has {results['summary']['invasion']['designed_reports']} "
+            "designed reports in total, of which the busiest single seed (seed "
+            f"{_busiest_invasion_seed(invasion_runs)['seed']}) contributes "
+            f"{_busiest_invasion_seed(invasion_runs)['designed_reports']}, and "
+            f"{sum(1 for run in invasion_runs if run['designed_reports'] == 0)} of "
+            f"{len(invasion_runs)} seeds produce no designed reports at all. Pooled "
+            "invasion precision is therefore a statement about the handful of lineages "
+            "that happened to be attached to vessel streams, not about the typical "
             "lineage. The per-seed table is the relevant visibility into that spread.",
             "",
             "The oracle row is a harness-local diagnostic upper bound only.",
@@ -379,6 +395,7 @@ def main() -> int:
     results: dict[str, Any] = {
         "seeds": args.seeds,
         "epochs": args.epochs,
+        "max_stream_dim": _MAX_STREAM_DIM,
         "nulls": _null_measurements(args.seeds, args.epochs),
         "runs": {},
     }
