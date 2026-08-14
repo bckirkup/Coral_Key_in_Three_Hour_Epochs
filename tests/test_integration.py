@@ -23,7 +23,7 @@ class TestTattleTotsIntegration:
         from tattletots.engine.world import World
 
         adapter = ReefWatchAdapter()
-        config = SimulationConfig(initial_population=10, max_steps=50, seed=42)
+        config = SimulationConfig(initial_population=10, max_steps=50, max_stream_dim=48, seed=42)
         world = World(config=config)
 
         for stream in adapter.get_streams():
@@ -48,7 +48,7 @@ class TestTattleTotsIntegration:
         from tattletots.engine.world import World
 
         adapter = ReefWatchAdapter()
-        config = SimulationConfig(initial_population=15, max_steps=100, seed=123)
+        config = SimulationConfig(initial_population=15, max_steps=100, max_stream_dim=48, seed=123)
         world = World(config=config)
 
         for stream in adapter.get_streams():
@@ -126,7 +126,7 @@ class TestTattleTotsIntegration:
         from tattletots.engine.world import World
 
         adapter = ReefWatchAdapter()
-        world = World(config=SimulationConfig(initial_population=2, seed=42))
+        world = World(config=SimulationConfig(initial_population=2, max_stream_dim=48, seed=42))
         for stream in adapter.get_streams():
             world.add_stream(stream)
         for user in adapter.get_users():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from tattletots.engine.config import SimulationConfig
 from tattletots.interface.adapter_conformance import assert_adapter_conformance
 from tattletots.models.dispatch_target import DispatchTarget
 from tattletots.models.observation import ObservationStatus
@@ -46,6 +47,7 @@ class TestReefWatchAdapter:
             ReefWatchAdapter(config=_small_config()),
             steps=20,
             state_independence_factory=_coral_state_independence_factory,
+            config=SimulationConfig(max_stream_dim=48),
         )
 
         assert report.valid
