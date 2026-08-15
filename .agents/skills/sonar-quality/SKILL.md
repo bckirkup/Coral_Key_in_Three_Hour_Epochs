@@ -1,119 +1,123 @@
 ---
 name: sonar-quality
-description: Resolve and prevent SonarCloud/SonarQube code quality issues in Python repos. Use when fixing Sonar findings, reviewing PRs with Sonar annotations, or writing new code that must pass SonarCloud analysis.
+description: Prevent SonarCloud/SonarQube issues when writing or changing code in this repo.
 ---
 
-# SonarCloud Quality Standards
+# Coral Key Sonar Quality Standards
 
-This repository is analyzed by SonarCloud on every push. Follow these rules so new code
-does not reintroduce flagged patterns.
+Apply these rules when writing or changing code in this repo. The repository's Sonar
+project is `bckirkup_Coral_Key_in_Three_Hour_Epochs`, with analysis wired through
+`.github/workflows/ci.yml`.
 
-## Pre-commit checklist
-
-```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-pytest
-```
-
-After substantive changes, verify the SonarCloud check on the PR or compare against
-`https://sonarcloud.io/project/issues?id=bckirkup_Coral_Key_in_Three_Hour_Epochs&issueStatuses=OPEN,CONFIRMED`.
-
-## Rule catalog (most common in this monorepo)
-
-### python:S1244 — no floating-point equality
-
-Never use `==` or `!=` on `float` values. Use `pytest.approx` in tests or
-`math.isclose` in production code.
-
-```python
-# Bad
-assert result.cost == 0.0
-
-# Good (tests)
-assert result.cost == pytest.approx(0.0)
-
-# Good (src)
-assert math.isclose(result.cost, 0.0, rel_tol=1e-9, abs_tol=1e-12)
-```
-
-### python:S1172 — unused function parameters
-
-Prefix intentionally unused parameters with `_`. This applies to protocol stubs,
-callback hooks, and interface methods where a parameter is required by signature
-but not used in this implementation.
-
-```python
-def setup(self, _adapter: Any, _run: RunContext) -> dict[str, Any]:
-    return {}
-```
-
-### python:S1186 — empty function bodies
-
-Empty stub methods must include an inline comment explaining why they are empty.
-
-```python
-def write_output(self, result, path) -> None:
-    pass  # Stub hook: output persistence not exercised in this test.
-```
-
-### python:S6709 — reproducible randomness
-
-Construct RNGs with an explicit seed. Store the generator on the object; do not call
-bare `np.random.*` without a seeded `Generator`.
-
-```python
-self._rng = np.random.default_rng(seed)
-value = self._rng.uniform(0, 1)
-```
-
-### python:S6711 — prefer numpy.random.Generator
-
-Use `np.random.default_rng(seed)` instead of legacy `np.random.seed()` /
-`np.random.RandomState` / module-level `np.random.*`.
-
-### python:S3776 — cognitive complexity ≤ 15
-
-When Sonar flags a function, extract helpers for distinct logical blocks. Prefer
-early returns over deep nesting. Each helper should have a single responsibility.
-
-### pythonsecurity:S8707 — CLI path traversal
-
-Never pass raw user CLI paths to `open()`, `Path()`, or `os.path.join()` without
-validation. Resolve paths and ensure they stay within an allowed base directory.
-
-```python
-def _safe_output_path(raw: str, base: Path) -> Path:
-    resolved = (base / raw).resolve()
-    if not resolved.is_relative_to(base.resolve()):
-        raise ValueError(f"Path escapes output directory: {raw}")
-    return resolved
-```
-
-### text:S8565 — predictable dependency versions
-
-Keep `uv.lock` committed alongside `pyproject.toml`. Regenerate after dependency
-changes:
+## Local validation
 
 ```bash
-uv lock
+pre-commit run --all-files
+python scripts/sonar_guard.py src tests scripts baselines
+python scripts/sonar_guard.py --workflows .github/workflows
+ruff check src/ tests/ scripts/ baselines/
+ruff format --check src/ tests/ scripts/ baselines/
+mypy src/
+pytest --strict-markers -ra
+pytest -m smoke --tb=short -q
 ```
 
-## Anti-patterns
+## Rule catalog
 
-| Pattern | Sonar rule | Fix |
-|---|---|---|
-| `assert x == 0.5` on floats | S1244 | `pytest.approx` / `math.isclose` |
-| Unused hook parameter `adapter` | S1172 | Rename to `_adapter` |
-| Bare `np.random.uniform()` | S6709, S6711 | `self._rng = np.random.default_rng(seed)` |
-| `pass` with no comment in stub | S1186 | Add `# reason` on same line |
-| `open(args.output)` from argparse | S8707 | Validate with `_safe_output_path` |
-| Unpinned deps, no lock file | S8565 | Commit `uv.lock` |
+- `python:S3776`: keep cognitive complexity at or below the repository's current
+  complexity ceiling. New or changed functions must stay below the pre-commit
+  threshold of 15.
+- `python:S9073`: use separate assertions for separate conditions; do not write
+  `assert condition_a and condition_b`.
+- `python:S1172`: rename intentionally unused parameters with a leading underscore.
+- `python:S116` and `python:S117`: use conventional snake_case names for Python
+  methods, variables, and attributes.
+- `python:S107`: keep function signatures focused; group related options into a
+  configuration object when a signature would otherwise grow too large.
+- `githubactions:S8541`: published-package `pip install` commands must include
+  `--only-binary :all:`.
+- `githubactions:S8544`: published-package installs must use explicit versions,
+  immutable commit references, or hashes. Local editable installs such as
+  `pip install -e .` are exempt because their version is defined by the checked-out
+  project metadata; they must still be reviewed for dependency reproducibility.
+- The same workflow checks cover UV installers:
+  - `uv sync` requires `--no-build` and `--locked` or `--frozen`.
+  - `uv pip install`, `uv add`, and `uv tool install` require `--no-build` and
+    pinned or hashed requirements.
+  - `uvx` and `uv tool run` require `--no-build` and a pinned `--from
+    package==version` requirement.
+  - `--no-binary-package <package>` may document source-build exceptions, but
+    does not replace `--no-build`.
+  - `uv run` requires `--no-build`, including when combined with `--no-sync`.
+  - Non-installing commands such as `uv lock` and `uv --version` are not checked.
 
-## When Sonar reports issues on existing code
+The mechanical guard is intentionally conservative and checks Python files plus
+workflow YAML. `zizmor` separately checks GitHub Actions action pinning.
 
-1. Fetch the issue list from SonarCloud or the PR check summary.
-2. Fix mechanical rules first (S1244, S1172, S6709, S1186, S1481).
-3. Refactor S3776 hotspots by extracting named helpers.
-4. Add path guards for S8707 in CLI/baseline scripts.
-5. Re-run local lint + tests before pushing.
+## CI complexity ratchet
+
+CI checks the whole repository with the current `ruff` complexity ceiling recorded
+in `pyproject.toml`. That ceiling only ratchets downward. Pre-commit applies the
+goal threshold of 15 to changed Python files.
+
+## Existing source findings
+
+Do not add `# noqa`, `nosonar`, or equivalent suppressions. Fix unused parameters,
+naming, complexity, and oversized signatures at their causes. Taint-analysis
+findings require review in the SonarQube Cloud job because local Ruff and the
+mechanical guard cannot prove inter-procedural data flow.
+
+## Validating the guards before copying this template to another repo
+
+After copying this template or editing `scripts/sonar_guard.py`,
+`.pre-commit-config.yaml`, or `.github/workflows/ci.yml`, prove that the guards reject
+bad code and stay quiet on good code. Plant one defect at a time and run it through
+the real hook path; a direct script invocation alone does not prove the hook is wired.
+Use a scratch branch and never push it:
+
+```bash
+git checkout -b scratch/guard-validation origin/main
+# plant one defect, then:
+git add <file> && git commit -m scratch   # must be refused, naming the rule ID
+git reset --hard origin/main              # discard; never push a scratch branch
+```
+
+The workflow guard checks `run:` installer commands, while zizmor checks `uses:`
+action pinning. Both hooks are required; dropping either leaves a whole class
+unguarded.
+
+### Generating workflow probes without fooling yourself
+
+Do not build probe YAML with `sed` or hand-written quoting. A `run:` value containing
+`:all:` or nested quotes can produce invalid YAML, causing zizmor to report
+`failed to parse input` and making the guard tokenize a mangled command. Emit probe
+fixtures with a YAML dumper and assert that the parsed `run` string equals the
+intended command before trusting the result.
+
+### Known guard blind spots
+
+The Python rules are deliberately conservative, so a clean local guard is necessary
+but not sufficient:
+
+- `assert value == _expected_threshold()` remains a SonarCloud-side catch. The guard
+  does not infer helper return types or perform inter-procedural type analysis.
+- Runtime types are not inferred across attributes, subscripts, module scope, or
+  function boundaries. A simple local float binding such as
+  `expected = 0.5; assert value == expected` is covered only when that function has
+  one unambiguous float assignment to the name; conflicting or dynamic assignments
+  stay silent.
+- `S9073` is only applied to test files (`tests/` in the path, `test_*.py`, or
+  `*_test.py`). Nested `and` expressions inside an assertion are reported once per
+  assertion.
+
+Rely on the `SonarQube Cloud` CI job for these blind spots and for findings requiring
+type or data-flow inference.
+
+### UV command spelling
+
+`uvx --from pkg==version` without `--no-build` is correctly reported as `S8541`.
+The compliant form is:
+
+```text
+uvx --no-build --from pkg==version ...
+```

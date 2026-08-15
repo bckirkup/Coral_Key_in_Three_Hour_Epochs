@@ -58,15 +58,25 @@ packages = ["src/coral_key"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "scripts", "baselines"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ARG", "C901", "N"]
 ignore = ["E501", "SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/coral_key/adapter.py" = ["ARG002"]  # DomainAdapter interface requires these time_step parameters.
+# E402: baseline_parallel requires the sys.path bootstrap.
+# ARG001: process-pool callback requires run_name.
+"baselines/run_coral_key_baselines.py" = ["E402", "ARG001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["coral_key"]
 known-third-party = ["tattletots"]
+
+[tool.ruff.lint.mccabe]
+# Whole-repository CI ceiling; this value only ratchets downward.
+max-complexity = 10
 
 [tool.mypy]
 python_version = "3.12"

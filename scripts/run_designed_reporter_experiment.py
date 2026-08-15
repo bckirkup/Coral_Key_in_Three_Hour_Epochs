@@ -58,7 +58,7 @@ class _OracleDiagnosticPolicy:
 
     active_locations: tuple[tuple[int, int], ...] = ()
 
-    def decide(self, context: ReporterPolicyContext) -> ReporterDecision:
+    def decide(self, _context: ReporterPolicyContext) -> ReporterDecision:
         if not self.active_locations:
             return ReporterDecision(escalate=False)
         return ReporterDecision(escalate=True, location=self.active_locations[0])
@@ -403,12 +403,20 @@ def main() -> int:
         results["runs"][arm] = [_arm_run(seed, args.epochs, arm) for seed in args.seeds]
     results["summary"] = _summarize_arms(results["runs"])
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(_markdown(results), encoding="utf-8")
-    print(f"Wrote {args.output}")
-    print(f"Wrote {args.report}")
+    docs_dir = _REPO_ROOT / "docs"
+    docs_dir_resolved = docs_dir.resolve()
+    output_path = (args.output if args.output.is_absolute() else Path.cwd() / args.output).resolve()
+    if not output_path.is_relative_to(docs_dir_resolved):
+        raise ValueError(f"Output path escapes allowed directory: {args.output}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    report_path = (args.report if args.report.is_absolute() else Path.cwd() / args.report).resolve()
+    if not report_path.is_relative_to(docs_dir_resolved):
+        raise ValueError(f"Report path escapes allowed directory: {args.report}")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(_markdown(results), encoding="utf-8")
+    print(f"Wrote {output_path}")
+    print(f"Wrote {report_path}")
     return 0
 
 

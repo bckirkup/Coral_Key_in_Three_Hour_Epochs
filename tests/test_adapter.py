@@ -128,12 +128,12 @@ class TestReefWatchAdapter:
         adapter = ReefWatchAdapter()
         adapter.step(0)
         observed_sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
-        assert np.any(observed_sar.current_data == 0.0)
+        assert np.any(np.isclose(observed_sar.current_data, 0.0, rtol=0.0, atol=1e-12))
         assert np.all(observed_sar.current_status == ObservationStatus.OBSERVED.value)
 
         adapter.step(1)
         missing_sar = next(s for s in adapter.get_streams() if s.label == "sar_satellite")
-        assert np.all(missing_sar.current_data == -1.0)
+        np.testing.assert_allclose(missing_sar.current_data, -1.0, rtol=0.0, atol=1e-12)
         assert np.all(missing_sar.current_status == ObservationStatus.MISSING.value)
         assert missing_sar.metadata is not None
         assert missing_sar.metadata.sensor_coordinates is not None

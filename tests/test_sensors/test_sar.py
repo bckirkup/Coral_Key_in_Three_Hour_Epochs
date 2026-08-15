@@ -20,7 +20,7 @@ class TestSARStream:
         sar = SARStream(grid=grid, revisit_interval=8, rng=rng)
         vessels = [Vessel(vessel_type=VesselType.LEGAL, at_port=False)]
         obs = sar.observe(vessels, epoch=3)
-        assert np.all(obs == -1.0)
+        np.testing.assert_allclose(obs, -1.0, rtol=0.0, atol=1e-12)
 
     def test_detection_on_revisit(self, rng: np.random.Generator) -> None:
         grid = OceanGrid.generate(nx=4, ny=4, mpa_fraction=0.2, n_ports=1, rng=rng)

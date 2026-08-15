@@ -36,6 +36,22 @@ class CoralEvidenceReporterPolicy:
         sar = self._find_stream(context.streams, "sar_satellite")
         ais_available = ais is not None and self._has_ais_declarations(ais)
         sar_available = sar is not None and self._has_sar_declarations(sar)
+        self._record_evidence(ais_available, sar_available)
+        observed_locations, missing_slots = self._read_available_ais(
+            ais, ais_available, context.time_step
+        )
+
+        residual_location = self._fresh_sar_residual(sar, sar_available, observed_locations)
+        if self._in_frame(residual_location, context):
+            return ReporterDecision(escalate=True, location=residual_location)
+
+        location = self._recent_missing_location(missing_slots, context.time_step)
+        if self._in_frame(location, context):
+            return ReporterDecision(escalate=True, location=location)
+
+        return ReporterDecision(escalate=False)
+
+    def _record_evidence(self, ais_available: bool, sar_available: bool) -> None:
         if ais_available:
             self.ais_evidence_steps += 1
         if sar_available:
@@ -43,23 +59,25 @@ class CoralEvidenceReporterPolicy:
         if ais_available or sar_available:
             self.ais_or_sar_evidence_steps += 1
 
-        if ais is not None and ais_available:
-            observed_locations, missing_slots = self._read_ais(ais, context.time_step)
-        else:
-            observed_locations = {}
-            missing_slots = []
+    def _read_available_ais(
+        self,
+        stream: ReporterStream | None,
+        available: bool,
+        time_step: int,
+    ) -> tuple[dict[int, EventLocation], list[int]]:
+        if stream is None or not available:
+            return {}, []
+        return self._read_ais(stream, time_step)
 
-        if sar is not None and sar_available and self._is_fresh(sar):
-            residual_location = self._sar_residual_location(sar, observed_locations)
-            if self._in_frame(residual_location, context):
-                return ReporterDecision(escalate=True, location=residual_location)
-
-        if ais is not None and ais_available:
-            location = self._recent_missing_location(missing_slots, context.time_step)
-            if self._in_frame(location, context):
-                return ReporterDecision(escalate=True, location=location)
-
-        return ReporterDecision(escalate=False)
+    def _fresh_sar_residual(
+        self,
+        stream: ReporterStream | None,
+        available: bool,
+        observed_locations: dict[int, EventLocation],
+    ) -> EventLocation | None:
+        if stream is None or not available or not self._is_fresh(stream):
+            return None
+        return self._sar_residual_location(stream, observed_locations)
 
     @staticmethod
     def _find_stream(
