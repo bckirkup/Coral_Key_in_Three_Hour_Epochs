@@ -34,6 +34,8 @@ Thumbs.db
 *.json
 !scenario.json
 !configs/*.json
+!docs/*.json
+!docs/grounded_access/*.json
 !.cursor/environment.json
 telemetry_buffer/
 results/
