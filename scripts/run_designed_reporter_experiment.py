@@ -52,15 +52,6 @@ _DEFAULT_SEEDS = [
 ]
 
 
-def _safe_output_path(raw: Path, base: Path) -> Path:
-    base_resolved = base.resolve()
-    candidate = raw if raw.is_absolute() else Path.cwd() / raw
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(base_resolved):
-        raise ValueError(f"Output path escapes allowed directory: {raw}")
-    return resolved
-
-
 @dataclass
 class _OracleDiagnosticPolicy:
     """Harness-local oracle; never ship or use as a designed reporter."""
@@ -413,10 +404,15 @@ def main() -> int:
     results["summary"] = _summarize_arms(results["runs"])
 
     docs_dir = _REPO_ROOT / "docs"
-    output_path = _safe_output_path(args.output, docs_dir)
-    report_path = _safe_output_path(args.report, docs_dir)
+    docs_dir_resolved = docs_dir.resolve()
+    output_path = (args.output if args.output.is_absolute() else Path.cwd() / args.output).resolve()
+    if not output_path.is_relative_to(docs_dir_resolved):
+        raise ValueError(f"Output path escapes allowed directory: {args.output}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    report_path = (args.report if args.report.is_absolute() else Path.cwd() / args.report).resolve()
+    if not report_path.is_relative_to(docs_dir_resolved):
+        raise ValueError(f"Report path escapes allowed directory: {args.report}")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(_markdown(results), encoding="utf-8")
     print(f"Wrote {output_path}")
