@@ -887,13 +887,16 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    specs = [parse_grounded_arm(spec) for spec in (args.grounded_arms or ["0.0"])]
-    runs = _run_arms(args.seeds, args.epochs, specs, max(args.jobs, 1))
+    epochs = int(args.epochs)
+    seeds = [int(seed) for seed in args.seeds]
+    jobs = max(int(args.jobs), 1)
+    specs = [parse_grounded_arm(str(spec)) for spec in (args.grounded_arms or ["0.0"])]
+    runs = _run_arms(seeds, epochs, specs, jobs)
     results: dict[str, Any] = {
-        "seeds": args.seeds,
-        "epochs": args.epochs,
+        "seeds": seeds,
+        "epochs": epochs,
         "max_stream_dim": _MAX_STREAM_DIM,
-        "nulls": _null_measurements(args.seeds, args.epochs),
+        "nulls": _null_measurements(seeds, epochs),
         "grounded_arms": [
             {
                 "label": grounded.label,
