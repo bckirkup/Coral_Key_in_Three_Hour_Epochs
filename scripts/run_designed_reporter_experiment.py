@@ -52,13 +52,22 @@ _DEFAULT_SEEDS = [
 ]
 
 
+def _safe_output_path(raw: Path, base: Path) -> Path:
+    base_resolved = base.resolve()
+    candidate = raw if raw.is_absolute() else Path.cwd() / raw
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(base_resolved):
+        raise ValueError(f"Output path escapes allowed directory: {raw}")
+    return resolved
+
+
 @dataclass
 class _OracleDiagnosticPolicy:
     """Harness-local oracle; never ship or use as a designed reporter."""
 
     active_locations: tuple[tuple[int, int], ...] = ()
 
-    def decide(self, context: ReporterPolicyContext) -> ReporterDecision:
+    def decide(self, _context: ReporterPolicyContext) -> ReporterDecision:
         if not self.active_locations:
             return ReporterDecision(escalate=False)
         return ReporterDecision(escalate=True, location=self.active_locations[0])
@@ -403,12 +412,15 @@ def main() -> int:
         results["runs"][arm] = [_arm_run(seed, args.epochs, arm) for seed in args.seeds]
     results["summary"] = _summarize_arms(results["runs"])
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(_markdown(results), encoding="utf-8")
-    print(f"Wrote {args.output}")
-    print(f"Wrote {args.report}")
+    docs_dir = _REPO_ROOT / "docs"
+    output_path = _safe_output_path(args.output, docs_dir)
+    report_path = _safe_output_path(args.report, docs_dir)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(_markdown(results), encoding="utf-8")
+    print(f"Wrote {output_path}")
+    print(f"Wrote {report_path}")
     return 0
 
 

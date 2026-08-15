@@ -39,8 +39,6 @@ else:
         "    Ensure all repos are cloned as siblings under a common workspace root."
     )
 
-from baseline_parallel import resolve_worker_count, run_process_pool
-
 
 def _safe_path_under_base(raw: str | Path, base: Path | None = None) -> Path:
     """Resolve a user-supplied path and ensure it stays within the allowed base."""
@@ -53,7 +51,7 @@ def _safe_path_under_base(raw: str | Path, base: Path | None = None) -> Path:
 
 
 def run_single_simulation(
-    run_name: str,
+    _run_name: str,
     epochs: int,
     seed: int,
     iuu_vessels: int,
@@ -190,6 +188,8 @@ def _execute_runs(
     parallel: bool,
     worker_count: int,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str], float]:
+    from baseline_parallel import run_process_pool
+
     results_key: dict[str, Any] = {"runs": {}}
     all_results: dict[str, Any] = {}
     logs: list[str] = []
@@ -296,6 +296,8 @@ def _print_run_summary(results_key: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    from baseline_parallel import resolve_worker_count
+
     parser = argparse.ArgumentParser(description="Parameter Scan Runner for Coral Key Baselines")
     parser.add_argument(
         "--config",
