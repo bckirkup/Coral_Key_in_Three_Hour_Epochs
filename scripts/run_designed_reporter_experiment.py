@@ -40,16 +40,9 @@ _MAX_STREAM_DIM = 48
 _ORACLE_POLICY_NAME = "coral_oracle_diagnostic_upper_bound"
 _POLICY_ARMS = ("ordinary", "all_designed_seed", "invasion", "oracle_upper_bound")
 _SAFE_PATH_COMPONENT = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
-_COMMITTED_OUTPUT_NAMES = (
-    "designed_reporter_measurement.json",
-    "designed_reporter_measurement.md",
-    "grounded_access",
-)
-_SCRATCH_OUTPUT_NAMES = (
-    "scratch_reporter_measurement.json",
-    "scratch_reporter_measurement.md",
-    "scratch_grounded_access",
-)
+_RESULTS_JSON_NAME = "designed_reporter_measurement.json"
+_REPORT_NAME = "designed_reporter_measurement.md"
+_SIMULATION_OUTPUT_DIR = "grounded_access"
 _STD_EPSILON = 1e-12
 _DEFAULT_SEEDS = [
     42,
@@ -889,11 +882,6 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--jobs", type=int, default=1)
-    parser.add_argument(
-        "--scratch",
-        action="store_true",
-        help="Write to the scratch output names instead of the committed measurement names.",
-    )
     return parser.parse_args()
 
 
@@ -928,14 +916,11 @@ def main() -> int:
             "summary": _summarize_arms(runs[grounded.label]),
         }
 
-    json_name, report_name, output_dir = (
-        _SCRATCH_OUTPUT_NAMES if args.scratch else _COMMITTED_OUTPUT_NAMES
-    )
-    output_path = _safe_docs_path(json_name)
+    output_path = _safe_docs_path(_RESULTS_JSON_NAME)
     output_path.write_text(json.dumps(_strip_series(results), indent=2) + "\n", encoding="utf-8")
-    report_path = _safe_docs_path(report_name)
+    report_path = _safe_docs_path(_REPORT_NAME)
     report_path.write_text(_markdown(results), encoding="utf-8")
-    written = _write_simulation_outputs(results, output_dir)
+    written = _write_simulation_outputs(results, _SIMULATION_OUTPUT_DIR)
     print(f"Wrote {output_path}")
     print(f"Wrote {report_path}")
     for path in written:
