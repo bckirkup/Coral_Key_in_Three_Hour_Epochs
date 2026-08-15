@@ -40,6 +40,16 @@ _MAX_STREAM_DIM = 48
 _ORACLE_POLICY_NAME = "coral_oracle_diagnostic_upper_bound"
 _POLICY_ARMS = ("ordinary", "all_designed_seed", "invasion", "oracle_upper_bound")
 _SAFE_PATH_COMPONENT = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_COMMITTED_OUTPUT_NAMES = (
+    "designed_reporter_measurement.json",
+    "designed_reporter_measurement.md",
+    "grounded_access",
+)
+_SCRATCH_OUTPUT_NAMES = (
+    "scratch_reporter_measurement.json",
+    "scratch_reporter_measurement.md",
+    "scratch_grounded_access",
+)
 _STD_EPSILON = 1e-12
 _DEFAULT_SEEDS = [
     42,
@@ -880,19 +890,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument(
-        "--output",
-        default="designed_reporter_measurement.json",
-        help="Raw results file name, written inside the repository's `docs/` directory.",
-    )
-    parser.add_argument(
-        "--report",
-        default="designed_reporter_measurement.md",
-        help="Markdown report file name, written inside the repository's `docs/` directory.",
-    )
-    parser.add_argument(
-        "--simulation-output-dir",
-        default="grounded_access",
-        help="`SimulationOutput` directory name, created inside the repository's `docs/` directory.",
+        "--scratch",
+        action="store_true",
+        help="Write to the scratch output names instead of the committed measurement names.",
     )
     return parser.parse_args()
 
@@ -928,11 +928,14 @@ def main() -> int:
             "summary": _summarize_arms(runs[grounded.label]),
         }
 
-    output_path = _safe_docs_path(args.output)
+    json_name, report_name, output_dir = (
+        _SCRATCH_OUTPUT_NAMES if args.scratch else _COMMITTED_OUTPUT_NAMES
+    )
+    output_path = _safe_docs_path(json_name)
     output_path.write_text(json.dumps(_strip_series(results), indent=2) + "\n", encoding="utf-8")
-    report_path = _safe_docs_path(args.report)
+    report_path = _safe_docs_path(report_name)
     report_path.write_text(_markdown(results), encoding="utf-8")
-    written = _write_simulation_outputs(results, args.simulation_output_dir)
+    written = _write_simulation_outputs(results, output_dir)
     print(f"Wrote {output_path}")
     print(f"Wrote {report_path}")
     for path in written:
