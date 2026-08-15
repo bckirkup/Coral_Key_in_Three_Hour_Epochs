@@ -78,8 +78,23 @@ class TestGroundedArmParsing:
 
     @pytest.mark.parametrize("spec", ["", "0.1,1.0,3,9", "abc"])
     def test_malformed_specifications_are_rejected(self, spec: str) -> None:
+        parse = _experiment().parse_grounded_arm
         with pytest.raises(ValueError):
-            _experiment().parse_grounded_arm(spec)
+            parse(spec)
+
+
+class TestSafeDocsPath:
+    def test_valid_names_resolve_under_docs(self) -> None:
+        path = _experiment()._safe_docs_path("grounded_access", "arm.json")
+        assert path.parent.name == "grounded_access"
+        assert path.parent.parent.name == "docs"
+        assert path.name == "arm.json"
+
+    @pytest.mark.parametrize("name", ["..", "../secrets", "/etc/passwd", "a/b", "", ".hidden"])
+    def test_traversal_and_separators_are_rejected(self, name: str) -> None:
+        safe_docs_path = _experiment()._safe_docs_path
+        with pytest.raises(ValueError):
+            safe_docs_path(name)
 
 
 class TestGroundedKnobsReachTheEngine:

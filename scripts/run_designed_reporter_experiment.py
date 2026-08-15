@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -38,6 +39,8 @@ _REPORTER_FRACTION = 0.15
 _MAX_STREAM_DIM = 48
 _ORACLE_POLICY_NAME = "coral_oracle_diagnostic_upper_bound"
 _POLICY_ARMS = ("ordinary", "all_designed_seed", "invasion", "oracle_upper_bound")
+_SAFE_PATH_COMPONENT = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_STD_EPSILON = 1e-12
 _DEFAULT_SEEDS = [
     42,
     43,
@@ -212,7 +215,7 @@ def _parent_child_reproductive_correlation(world: World) -> float | None:
         return None
     parent_counts = np.asarray(parents, dtype=np.float64)
     child_counts = np.asarray(children, dtype=np.float64)
-    if parent_counts.std() == 0.0 or child_counts.std() == 0.0:
+    if parent_counts.std() <= _STD_EPSILON or child_counts.std() <= _STD_EPSILON:
         return None
     return float(np.corrcoef(parent_counts, child_counts)[0, 1])
 
@@ -807,11 +810,13 @@ def _run_arms(
     return runs
 
 
-def _resolve_within_docs(path: Path) -> Path:
-    docs_dir = (_REPO_ROOT / "docs").resolve()
-    resolved = (path if path.is_absolute() else Path.cwd() / path).resolve()
-    if not resolved.is_relative_to(docs_dir):
-        raise ValueError(f"Output path escapes allowed directory: {path}")
+def _safe_docs_path(*names: str) -> Path:
+    """Build a path under `docs/` from name components validated against a whitelist."""
+    resolved = _REPO_ROOT / "docs"
+    for name in names:
+        if _SAFE_PATH_COMPONENT.fullmatch(name) is None:
+            raise ValueError(f"Unsafe output path component: {name!r}")
+        resolved = resolved / name
     resolved.parent.mkdir(parents=True, exist_ok=True)
     return resolved
 
@@ -836,7 +841,7 @@ def _strip_series(results: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
-def _write_simulation_outputs(results: dict[str, Any], directory: Path) -> list[Path]:
+def _write_simulation_outputs(results: dict[str, Any], directory: str) -> list[Path]:
     written: list[Path] = []
     for spec in results["grounded_arms"]:
         grounded = GroundedArm(
@@ -853,7 +858,7 @@ def _write_simulation_outputs(results: dict[str, Any], directory: Path) -> list[
                 arm["summary"][policy_arm],
                 results,
             )
-            path = _resolve_within_docs(directory / f"{spec['label']}__{policy_arm}.json")
+            path = _safe_docs_path(directory, f"{spec['label']}__{policy_arm}.json")
             output.write_json(path)
             written.append(path)
     return written
@@ -876,18 +881,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument(
         "--output",
-        type=Path,
-        default=_REPO_ROOT / "docs" / "designed_reporter_measurement.json",
+        default="designed_reporter_measurement.json",
+        help="Raw results file name, written inside the repository's `docs/` directory.",
     )
     parser.add_argument(
         "--report",
-        type=Path,
-        default=_REPO_ROOT / "docs" / "designed_reporter_measurement.md",
+        default="designed_reporter_measurement.md",
+        help="Markdown report file name, written inside the repository's `docs/` directory.",
     )
     parser.add_argument(
         "--simulation-output-dir",
-        type=Path,
-        default=_REPO_ROOT / "docs" / "grounded_access",
+        default="grounded_access",
+        help="`SimulationOutput` directory name, created inside the repository's `docs/` directory.",
     )
     return parser.parse_args()
 
@@ -923,9 +928,9 @@ def main() -> int:
             "summary": _summarize_arms(runs[grounded.label]),
         }
 
-    output_path = _resolve_within_docs(args.output)
+    output_path = _safe_docs_path(args.output)
     output_path.write_text(json.dumps(_strip_series(results), indent=2) + "\n", encoding="utf-8")
-    report_path = _resolve_within_docs(args.report)
+    report_path = _safe_docs_path(args.report)
     report_path.write_text(_markdown(results), encoding="utf-8")
     written = _write_simulation_outputs(results, args.simulation_output_dir)
     print(f"Wrote {output_path}")
