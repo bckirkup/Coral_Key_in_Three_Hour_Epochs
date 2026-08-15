@@ -11,6 +11,18 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from tattletots.engine.config import SimulationConfig
+
+_GROUNDED_KNOBS = (
+    "grounded_input_fraction",
+    "grounded_attractiveness_multiplier",
+    "max_input_streams",
+)
+
+requires_grounded_knobs = pytest.mark.skipif(
+    not all(knob in SimulationConfig.model_fields for knob in _GROUNDED_KNOBS),
+    reason="installed tattletots build has no grounded raw-stream access knobs",
+)
 
 _SCRIPT_PATH = (
     Path(__file__).resolve().parents[1] / "scripts" / "run_designed_reporter_experiment.py"
@@ -97,6 +109,7 @@ class TestSafeDocsPath:
             safe_docs_path(name)
 
 
+@requires_grounded_knobs
 class TestGroundedKnobsReachTheEngine:
     @pytest.mark.parametrize(
         ("fraction", "multiplier"),
@@ -231,6 +244,7 @@ class TestEcologySummary:
 
 
 @pytest.mark.smoke
+@requires_grounded_knobs
 class TestGroundedAccessChangesEvidenceExposure:
     def test_reserved_grounded_slots_raise_the_evidence_rate(self) -> None:
         module = _experiment()
