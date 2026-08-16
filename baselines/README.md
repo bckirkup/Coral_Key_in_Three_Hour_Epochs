@@ -6,8 +6,8 @@ Parameter scans using **only** conventional baseline architectures (A0–A3), no
 
 ```bash
 cd D:\TotsFiles
-uv run --no-sync --no-build --project Coral-Key-in-Three-Hour-Epochs python Coral-Key-in-Three-Hour-Epochs/baselines/run_coral_key_baselines.py --smoke-test
-uv run --no-sync --no-build --project Coral-Key-in-Three-Hour-Epochs python Coral-Key-in-Three-Hour-Epochs/baselines/run_coral_key_baselines.py --workers 8
+uv run --no-sync --no-build --project Coral_Key_in_Three_Hour_Epochs python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
+uv run --no-sync --no-build --project Coral_Key_in_Three_Hour_Epochs python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --workers 8
 ```
 
 Parallel mode uses **ProcessPoolExecutor** (separate Python worker processes).
