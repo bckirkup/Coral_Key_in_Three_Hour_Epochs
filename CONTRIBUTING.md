@@ -8,17 +8,17 @@ fix it yourself. This follows the TattleTots contribution philosophy.
 ## Setup
 
 ```bash
-pip install -e ".[dev]"
-pre-commit install
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev
+uv run --no-sync --no-build pre-commit install
 ```
 
 ## Before Committing
 
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-mypy src/
-pytest
+uv run --no-sync --no-build ruff check src/ tests/
+uv run --no-sync --no-build ruff format --check src/ tests/
+uv run --no-sync --no-build mypy src/
+uv run --no-sync --no-build pytest
 ```
 
 All four commands must pass cleanly.

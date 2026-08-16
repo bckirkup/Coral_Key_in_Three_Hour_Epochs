@@ -7,7 +7,7 @@ name = "coral-key"
 version = "0.1.0"
 description = "ReefWatch fishery monitoring domain adapter for TattleTots — IUU detection, stock assessment, and ocean sensor ecology in three-hour epochs"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "Benjamin Kirkup", email = "bckirkup@gmail.com" }]
 keywords = [
@@ -22,7 +22,7 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
