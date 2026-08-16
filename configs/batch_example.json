@@ -1,0 +1,13 @@
+{
+  "layer": "domain_only",
+  "domain": {
+    "seed": 42,
+    "total_epochs": 3
+  },
+  "runs": [
+    {
+      "name": "baseline_seed_42",
+      "config_overrides": {}
+    }
+  ]
+}
