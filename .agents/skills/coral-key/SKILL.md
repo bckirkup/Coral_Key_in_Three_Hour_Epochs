@@ -7,45 +7,43 @@ description: Development workflow for the Coral Key ReefWatch fishery simulation
 
 ## Quick Setup
 ```bash
-pip install -e domain-runner[dev]
-pip install -e TattleTots[dev]   # only for --layer tattletots
-pip install -e ".[dev]"
-pre-commit install
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev
+uv run --no-sync --no-build pre-commit install
 ```
 
 ## Running Tests
 ```bash
 # Full suite
-pytest
+uv run --no-sync --no-build pytest
 
 # Smoke tests only (integration)
-pytest -m smoke
+uv run --no-sync --no-build pytest -m smoke
 
 # Specific module
-pytest tests/test_ocean/
-pytest tests/test_fleet/
-pytest tests/test_sensors/
-pytest tests/test_adversary/
-pytest tests/test_adapter.py
-pytest tests/test_metrics.py
+uv run --no-sync --no-build pytest tests/test_ocean/
+uv run --no-sync --no-build pytest tests/test_fleet/
+uv run --no-sync --no-build pytest tests/test_sensors/
+uv run --no-sync --no-build pytest tests/test_adversary/
+uv run --no-sync --no-build pytest tests/test_adapter.py
+uv run --no-sync --no-build pytest tests/test_metrics.py
 ```
 
 ## Linting & Type Checking
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
-mypy src/
+uv run --no-sync --no-build ruff check src/ tests/
+uv run --no-sync --no-build ruff format --check src/ tests/
+uv run --no-sync --no-build mypy src/
 ```
 
 ## Running a Simulation
 ```bash
-coral-key sim --layer domain_only --epochs 100 --verbose
-coral-key sim --layer tattletots --config configs/tattletots_integration.json
-coral-key batch --config configs/batch_example.json
+uv run --no-sync --no-build coral-key sim --layer domain_only --epochs 100 --verbose
+uv run --no-sync --no-build coral-key sim --layer tattletots --config configs/tattletots_integration.json
+uv run --no-sync --no-build coral-key batch --config configs/batch_example.json
 
 # Legacy
-coral-key --epochs 100 --verbose
-coral-key --config scenario.json --output results.json
+uv run --no-sync --no-build coral-key --epochs 100 --verbose
+uv run --no-sync --no-build coral-key --config scenario.json --output results.json
 ```
 
 ## Architecture Overview
@@ -74,7 +72,7 @@ Standalone baseline comparison files live in `baselines/`:
 ## Integrated Mode (TattleTots Agent Ecology)
 
 ```bash
-coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
+uv run --no-sync --no-build coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
 ```
 
 Output conforms to `tattletots.output_schema.SimulationOutput` (unified JSON).
@@ -83,7 +81,7 @@ See `docs/COORDINATION.md` for coordination with sibling repos.
 ## GPU Acceleration
 
 ```bash
-pip install -e ".[gpu]"  # installs cupy-cuda12x
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev --extra gpu
 ```
 
 Set `"use_gpu": true` in the `"simulation"` section of the integration config.
@@ -94,7 +92,7 @@ Falls back silently to NumPy if CuPy or CUDA is unavailable.
 Generate config variants and run in parallel for large sweeps:
 
 ```bash
-python scripts/run_with_tattletots.py --config <variant>.json --output results/<name>.json
+uv run --no-sync --no-build python scripts/run_with_tattletots.py --config <variant>.json --output results/<name>.json
 ```
 
 Key domain parameters to sweep: `total_epochs`, `n_iuu_vessels`, `n_gaming_vessels`,

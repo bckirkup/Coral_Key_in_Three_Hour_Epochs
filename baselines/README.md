@@ -6,8 +6,8 @@ Parameter scans using **only** conventional baseline architectures (A0–A3), no
 
 ```bash
 cd D:\TotsFiles
-python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
-python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --workers 8
+uv run --no-sync --no-build --project Coral_Key_in_Three_Hour_Epochs python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --smoke-test
+uv run --no-sync --no-build --project Coral_Key_in_Three_Hour_Epochs python Coral_Key_in_Three_Hour_Epochs/baselines/run_coral_key_baselines.py --workers 8
 ```
 
 Parallel mode uses **ProcessPoolExecutor** (separate Python worker processes).
@@ -27,6 +27,5 @@ Multiprocessing helpers live in `TattleTots/Large Experiments/baseline_parallel.
 ## Prerequisites
 
 ```bash
-pip install -e TattleTots[dev]
-pip install -e Coral_Key_in_Three_Hour_Epochs[dev]
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev
 ```

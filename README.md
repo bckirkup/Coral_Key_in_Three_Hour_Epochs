@@ -18,22 +18,21 @@ The simulation advances in **3-hour epochs**, modeling:
 ```bash
 git clone https://github.com/bckirkup/Coral_Key_in_Three_Hour_Epochs.git
 cd Coral_Key_in_Three_Hour_Epochs
-pip install -e domain-runner[dev]
-pip install -e ".[dev]"
-pre-commit install
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev
+uv run --no-sync --no-build pre-commit install
 ```
 
-Requires [domain-runner](https://github.com/bckirkup/domain-runner). TattleTots is only needed for `--layer tattletots`.
+The lockfile provides the domain-runner and TattleTots dependencies.
 
 ## Quick Start
 
 ```bash
-coral-key sim --layer domain_only --epochs 200 --verbose
-coral-key batch --config configs/batch_example.json
+uv run --no-sync --no-build coral-key sim --layer domain_only --epochs 200 --verbose
+uv run --no-sync --no-build coral-key batch --config configs/batch_example.json
 
 # Legacy
-coral-key --epochs 200 --verbose
-coral-key --config scenario.json --output results.json
+uv run --no-sync --no-build coral-key --epochs 200 --verbose
+uv run --no-sync --no-build coral-key --config scenario.json --output results.json
 ```
 
 ### As a TattleTots Domain Adapter
@@ -112,14 +111,13 @@ src/coral_key/
 ## Integrated Mode (with TattleTots Agent Ecology)
 
 ```bash
-pip install -e TattleTots[dev]
-coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
+uv run --no-sync --no-build coral-key sim --layer tattletots --config configs/tattletots_integration.json --output results.json --verbose
 ```
 
 Legacy:
 
 ```bash
-python scripts/run_with_tattletots.py \
+uv run --no-sync --no-build python scripts/run_with_tattletots.py \
     --config configs/tattletots_integration.json \
     --output results.json \
     --verbose
@@ -133,16 +131,16 @@ See [docs/COORDINATION.md](docs/COORDINATION.md) for full coordination guide, co
 
 ```bash
 # Lint
-ruff check src/ tests/
-ruff format --check src/ tests/
+uv run --no-sync --no-build ruff check src/ tests/
+uv run --no-sync --no-build ruff format --check src/ tests/
 
 # Type check
-mypy src/
+uv run --no-sync --no-build mypy src/
 
 # Test
-pytest                    # Full suite
-pytest -m smoke           # Smoke tests only
-pytest tests/test_ocean/  # Specific module
+uv run --no-sync --no-build pytest                    # Full suite
+uv run --no-sync --no-build pytest -m smoke           # Smoke tests only
+uv run --no-sync --no-build pytest tests/test_ocean/  # Specific module
 ```
 
 ## Falsification Test
@@ -155,4 +153,4 @@ compared to centralized AIS+SAR+catch+oceanography fusion (Architecture A3).
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE).

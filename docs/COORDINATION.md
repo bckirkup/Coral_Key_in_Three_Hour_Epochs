@@ -30,9 +30,7 @@ class ReefWatchAdapter(DomainAdapter):
 ## Installation for Coordinated Use
 
 ```bash
-pip install -e /path/to/domain-runner[dev]
-pip install -e /path/to/TattleTots[dev]   # only for --layer tattletots
-pip install -e ".[dev]"
+uv sync --locked --no-build --no-binary-package coral-key --no-binary-package domain-runner --no-binary-package tattletots --extra dev
 ```
 
 ## Running Modes
@@ -40,19 +38,19 @@ pip install -e ".[dev]"
 ### Domain only (no agent ecology)
 
 ```bash
-coral-key sim --layer domain_only --epochs 200 --verbose --output standalone_results.json
-coral-key batch --config configs/batch_example.json
+uv run --no-sync --no-build coral-key sim --layer domain_only --epochs 200 --verbose --output standalone_results.json
+uv run --no-sync --no-build coral-key batch --config configs/batch_example.json
 ```
 
 ### Integrated (domain + TattleTots agent ecology + COP dispatch)
 
-COP fusion uses `adapter.score_relevance()` with band-aligned role weighting (see TattleTots `engine/relevance.py`). Requires a current TattleTots install.
+COP fusion uses `adapter.score_relevance()` with band-aligned role weighting (see TattleTots `engine/relevance.py`). The locked dependencies are installed by `uv sync`.
 
 ```bash
-coral-key sim --layer tattletots --config configs/tattletots_integration.json --output integrated_results.json --verbose
+uv run --no-sync --no-build coral-key sim --layer tattletots --config configs/tattletots_integration.json --output integrated_results.json --verbose
 
 # Legacy
-python scripts/run_with_tattletots.py \
+uv run --no-sync --no-build python scripts/run_with_tattletots.py \
     --config configs/tattletots_integration.json \
     --output integrated_results.json \
     --verbose
