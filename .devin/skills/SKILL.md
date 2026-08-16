@@ -3,6 +3,8 @@ name: coral-key-development
 description: Development workflow for the Coral Key ReefWatch fishery simulation domain adapter. Covers setup, testing, and extending the domain model.
 ---
 
+> This copy mirrors the authoritative `.agents/skills/coral-key/SKILL.md`.
+
 # Coral Key Development Skill
 
 ## Quick Setup
@@ -125,3 +127,77 @@ result = SimulationOutput.model_validate_json(path.read_text())
 ### Adjusting scenario parameters
 All config is in `src/coral_key/config.py` using Pydantic models.
 Override via JSON config file or constructor parameters.
+
+## Testing the Designed-Reporter Measurement Harness
+
+`scripts/run_designed_reporter_experiment.py` measures the domain's exploitable
+margin (best reachable precision minus its own static-prior null) across the
+`ordinary` / `all_designed_seed` / `invasion` / `oracle_upper_bound` arms, using
+`src/coral_key/reporter_policy.py` as the hand-designed reporter.
+
+### Fast rerun, and the artifact-clobbering trap
+
+The production config (`--epochs 200`, 20 seeds) takes tens of minutes. A fast
+verification run:
+
+```bash
+uv run --no-sync --no-build python scripts/run_designed_reporter_experiment.py \
+  --epochs 30 --seeds 42 43 --grounded-arm 0.67 --jobs 2
+```
+
+The script has **no `--docs-dir` flag**: it always writes into `docs/`, so a short
+run overwrites the committed artifacts (`docs/designed_reporter_measurement.{json,md}`
+and `docs/grounded_access/<label>__<arm>.json`). Restore them afterwards:
+
+```bash
+git restore docs/
+```
+
+Short windows also print a `WARNING: Coral nulls differ from the 200-step
+references` line — expected, not a failure; the nulls are window-dependent.
+
+### What to assert on the artifacts
+
+- All four arms present; each arm file validates via
+  `SimulationOutput.model_validate_json`.
+- Every `*precision*` / `*rate*` / `*_null*` / `*share*` / `*fraction*` finite and
+  within [0,1]; every `*_pp` within [-100,100].
+- Markdown agrees with the JSON on the static-prior null, the best feasible arm
+  and its precision, the margin in pp, and the ordinary-vs-null wording.
+- Each arm's precision recomputes from its raw counts, and per-seed counts sum to
+  the pooled totals.
+- The oracle arm is never the source of `best_feasible_arm`; with all feasible arms
+  zeroed the best feasible arm must come back `None`, not the oracle.
+
+### Determinism, with one legitimate exception
+
+Same command twice must give identical `nulls` / arm summaries / margin and
+byte-identical Markdown, and `--jobs 1` must reproduce `--jobs N`. But per-arm
+`SimulationOutput` JSON stamps a `timestamp`, so those files are **not**
+byte-reproducible — never write a byte-comparison check on them.
+
+### Tamper-testing the reporter policy (two traps)
+
+`CoralEvidenceReporterPolicy` is registered via `register_reporter_policy`.
+
+- Patching the policy class's attribute default is a **no-op** — the registered
+  factory already captured it. Re-register the factory with the changed parameter.
+- With real IUU events present, the strongest true detection dominates the max, so
+  changing the evidence threshold looks like it does nothing. Prove the threshold
+  is load-bearing in a **no-event window** (false positives only): threshold on →
+  zero designed reports; threshold at 0 → many reports, none correct.
+
+### Ground-truth boundary
+
+The feasible reporter must not reach `adapter.get_ground_truth()` or
+`adapter.get_active_locations()` — those belong to the oracle arm only. Assert it
+structurally (the reporter module never names them) and at runtime (spy on
+`decide(context)`; the context should expose only the public reporter fields).
+Also assert the oracle policy instance appears only in the oracle arm's world.
+
+### Reporting precision that comes from silence
+
+A designed reporter reaching ~100% precision does so by declining to report, and
+can legitimately exceed the instrument's inferability precision for the same
+reason. Always publish the price alongside it (reports per adult lifetime, raw
+report counts) and say so in the writeup, or the number reads like a truth leak.

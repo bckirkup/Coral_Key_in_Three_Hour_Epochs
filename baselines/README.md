@@ -18,7 +18,6 @@ Parallel mode uses **ProcessPoolExecutor** (separate Python worker processes).
 |------|---------|
 | `run_coral_key_baselines.py` | Parameter scan runner |
 | `coral_key_baselines_config.json` | Factor levels, seeds, epochs |
-| `coral_key_baselines_results.zip` | Pre-computed results (optional) |
 
 ## Shared utilities
 

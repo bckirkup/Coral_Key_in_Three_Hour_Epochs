@@ -12,14 +12,14 @@ project is `bckirkup_Coral_Key_in_Three_Hour_Epochs`, with analysis wired throug
 ## Local validation
 
 ```bash
-pre-commit run --all-files
-python scripts/sonar_guard.py src tests scripts baselines
-python scripts/sonar_guard.py --workflows .github/workflows
-ruff check src/ tests/ scripts/ baselines/
-ruff format --check src/ tests/ scripts/ baselines/
-mypy src/
-pytest --strict-markers -ra
-pytest -m smoke --tb=short -q
+uv run --no-sync --no-build pre-commit run --all-files
+uv run --no-sync --no-build python scripts/sonar_guard.py src tests scripts baselines
+uv run --no-sync --no-build python scripts/sonar_guard.py --workflows .github/workflows
+uv run --no-sync --no-build ruff check src/ tests/ scripts/ baselines/
+uv run --no-sync --no-build ruff format --check src/ tests/ scripts/ baselines/
+uv run --no-sync --no-build mypy src/
+uv run --no-sync --no-build pytest --strict-markers -ra
+uv run --no-sync --no-build pytest -m smoke --tb=short -q
 ```
 
 ## Rule catalog
