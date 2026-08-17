@@ -3,6 +3,11 @@
 The designed policy uses only published AIS metadata/status and fresh SAR metadata/data.
 The oracle row is a harness-local diagnostic upper bound and is not a shipped policy.
 
+The payoff levers (including the correctness-keyed response gate) are off in the numbers
+below. For the evolved arm measured with those levers on, at 600 engine steps and against
+the 600-step static-prior null, see
+[`response_gate_measurement.md`](response_gate_measurement.md).
+
 - Seeds: `42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61`
 - Epochs per run: `200`
 - Per-agent input cap (`max_stream_dim`): `48`
